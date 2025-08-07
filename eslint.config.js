@@ -28,7 +28,7 @@ export default [
         module: 'readonly',
         require: 'readonly',
         exports: 'readonly',
-        // Jest globals
+        // Vitest globals
         describe: 'readonly',
         it: 'readonly',
         test: 'readonly',
@@ -37,7 +37,7 @@ export default [
         afterEach: 'readonly',
         beforeAll: 'readonly',
         afterAll: 'readonly',
-        jest: 'readonly',
+        vi: 'readonly',
       },
     },
     plugins: {
@@ -111,6 +111,15 @@ export default [
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', '*.js', '*.cjs', '.husky/'],
+    ignores: [
+      'dist/',
+      'node_modules/',
+      '*.js',
+      '*.cjs',
+      '.husky/',
+      '**/*.config.ts',
+      'uno.config.ts',
+      'vitest.config.ts',
+    ],
   },
 ];

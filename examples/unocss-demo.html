@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UnoCSS 演示</title>
+    <script src="https://unpkg.com/unocss@0.58.5/runtime"></script>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-4xl font-bold text-center text-gray-800 mb-8">
+            UnoCSS 演示
+        </h1>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- 卡片1 -->
+            <div class="card">
+                <h3 class="text-xl font-semibold mb-4 text-primary-600">基础样式</h3>
+                <p class="text-gray-600 mb-4">
+                    使用UnoCSS的原子化CSS类来快速构建界面。
+                </p>
+                <button class="btn-primary">主要按钮</button>
+            </div>
+
+            <!-- 卡片2 -->
+            <div class="card">
+                <h3 class="text-xl font-semibold mb-4 text-primary-600">快捷方式</h3>
+                <p class="text-gray-600 mb-4">
+                    使用预定义的快捷方式来提高开发效率。
+                </p>
+                <button class="btn-secondary">次要按钮</button>
+            </div>
+
+            <!-- 卡片3 -->
+            <div class="card">
+                <h3 class="text-xl font-semibold mb-4 text-primary-600">响应式设计</h3>
+                <p class="text-gray-600 mb-4">
+                    支持响应式断点和移动优先的设计。
+                </p>
+                <input type="text" class="input" placeholder="输入框示例">
+            </div>
+        </div>
+
+        <!-- 颜色展示 -->
+        <div class="mt-12">
+            <h2 class="text-2xl font-bold text-center text-gray-800 mb-6">主题色彩</h2>
+            <div class="grid grid-cols-5 gap-4">
+                <div class="bg-primary-50 h-20 rounded-lg flex items-center justify-center text-primary-900">50</div>
+                <div class="bg-primary-100 h-20 rounded-lg flex items-center justify-center text-primary-900">100</div>
+                <div class="bg-primary-200 h-20 rounded-lg flex items-center justify-center text-primary-900">200</div>
+                <div class="bg-primary-300 h-20 rounded-lg flex items-center justify-center text-primary-900">300</div>
+                <div class="bg-primary-400 h-20 rounded-lg flex items-center justify-center text-white">400</div>
+                <div class="bg-primary-500 h-20 rounded-lg flex items-center justify-center text-white">500</div>
+                <div class="bg-primary-600 h-20 rounded-lg flex items-center justify-center text-white">600</div>
+                <div class="bg-primary-700 h-20 rounded-lg flex items-center justify-center text-white">700</div>
+                <div class="bg-primary-800 h-20 rounded-lg flex items-center justify-center text-white">800</div>
+                <div class="bg-primary-900 h-20 rounded-lg flex items-center justify-center text-white">900</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

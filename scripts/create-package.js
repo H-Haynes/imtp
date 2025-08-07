@@ -55,7 +55,9 @@ const packageJson = {
   scripts: {
     dev: 'rollup -c -w',
     build: 'rollup -c',
-    test: 'jest',
+    test: 'vitest',
+    'test:ui': 'vitest --ui',
+    'test:coverage': 'vitest --coverage',
     lint: 'eslint src --ext .ts,.tsx',
     'lint:fix': 'eslint src --ext .ts,.tsx --fix',
     clean: 'rimraf dist',
@@ -72,6 +74,7 @@ const packageJson = {
     '@rollup/plugin-typescript': '^12.1.4',
     rollup: '^4.46.2',
     typescript: '^5.8.3',
+    vitest: '^1.3.1',
   },
 };
 
@@ -195,29 +198,20 @@ MIT`;
 fs.writeFileSync(path.join(packageDir, 'README.md'), readme);
 console.log(`创建文件: ${packageDir}/README.md`);
 
-// 创建jest.config.js
-const jestConfig = `export default {
-  preset: 'ts-jest',
-  testEnvironment: 'node',
-  testMatch: ['**/tests/**/*.test.ts'],
-  transform: {
-    '^.+\\.ts$': 'ts-jest',
-  },
-  moduleFileExtensions: ['ts', 'js'],
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/**/*.d.ts',
-  ],
-  extensionsToTreatAsEsm: ['.ts'],
-  globals: {
-    'ts-jest': {
-      useESM: true,
-    },
-  },
-};`;
+// 创建vitest.config.ts
+const vitestConfig = `import { defineConfig } from 'vitest/config';
 
-fs.writeFileSync(path.join(packageDir, 'jest.config.js'), jestConfig);
-console.log(`创建文件: ${packageDir}/jest.config.js`);
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['tests/**/*.{test,spec}.{js,ts}'],
+    exclude: ['node_modules', 'dist'],
+  },
+});`;
+
+fs.writeFileSync(path.join(packageDir, 'vitest.config.ts'), vitestConfig);
+console.log(`创建文件: ${packageDir}/vitest.config.ts`);
 
 console.log('\n✅ 包创建成功！');
 console.log(`\n下一步操作:`);
