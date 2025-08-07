@@ -1,10 +1,3 @@
-import { defineConfig } from 'vitest/config';
+import { createVitestConfig } from '../../configs/vitest.config';
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'node',
-    include: ['tests/**/*.{test,spec}.{js,ts}'],
-    exclude: ['node_modules', 'dist'],
-  },
-});
+export default createVitestConfig();

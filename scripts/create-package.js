@@ -53,8 +53,12 @@ const packageJson = {
   types: 'dist/index.d.ts',
   files: ['dist'],
   scripts: {
-    dev: 'rollup -c -w',
-    build: 'rollup -c',
+    dev: 'vite build --watch',
+    build: 'vite build',
+    'build:esm': 'vite build --mode esm',
+    'build:cjs': 'vite build --mode cjs',
+    'build:umd': 'vite build --mode umd',
+    'build:min': 'vite build --mode min',
     test: 'vitest',
     'test:ui': 'vitest --ui',
     'test:coverage': 'vitest --coverage',
@@ -70,11 +74,9 @@ const packageJson = {
     access: 'public',
   },
   devDependencies: {
-    '@rollup/plugin-node-resolve': '^16.0.1',
-    '@rollup/plugin-typescript': '^12.1.4',
-    rollup: '^4.46.2',
-    typescript: '^5.8.3',
-    vitest: '^1.3.1',
+    typescript: '^5.9.2',
+    vite: '^7.1.0',
+    vitest: '^3.2.4',
   },
 };
 
@@ -86,13 +88,10 @@ console.log(`创建文件: ${packageDir}/package.json`);
 
 // 创建tsconfig.json
 const tsconfig = {
-  extends: '../../tsconfig.json',
+  extends: '../../configs/tsconfig.lib.json',
   compilerOptions: {
     outDir: './dist',
     rootDir: './src',
-    declaration: true,
-    declarationMap: true,
-    sourceMap: true,
   },
   include: ['src/**/*'],
   exclude: ['node_modules', 'dist', 'tests'],
@@ -199,19 +198,25 @@ fs.writeFileSync(path.join(packageDir, 'README.md'), readme);
 console.log(`创建文件: ${packageDir}/README.md`);
 
 // 创建vitest.config.ts
-const vitestConfig = `import { defineConfig } from 'vitest/config';
+const vitestConfig = `import { createVitestConfig } from '../../configs/vitest.config';
 
-export default defineConfig({
-  test: {
-    globals: true,
-    environment: 'node',
-    include: ['tests/**/*.{test,spec}.{js,ts}'],
-    exclude: ['node_modules', 'dist'],
-  },
-});`;
+export default createVitestConfig();`;
 
 fs.writeFileSync(path.join(packageDir, 'vitest.config.ts'), vitestConfig);
 console.log(`创建文件: ${packageDir}/vitest.config.ts`);
+
+// 创建vite.config.ts
+const viteConfig = `import { createViteLibConfig } from '../../configs/vite.lib.config';
+
+export default createViteLibConfig({
+  entry: 'src/index.ts',
+  name: '${packageName}',
+  external: [],
+  globals: {},
+});`;
+
+fs.writeFileSync(path.join(packageDir, 'vite.config.ts'), viteConfig);
+console.log(`创建文件: ${packageDir}/vite.config.ts`);
 
 console.log('\n✅ 包创建成功！');
 console.log(`\n下一步操作:`);
