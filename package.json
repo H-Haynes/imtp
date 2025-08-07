@@ -19,6 +19,7 @@
   "scripts": {
     "dev": "pnpm -r run dev",
     "build": "pnpm -r run build",
+    "build:min": "pnpm -r run build && pnpm -r run build:min",
     "test": "pnpm -r run test",
     "test:ui": "pnpm -r run test:ui",
     "test:coverage": "pnpm -r run test:coverage",

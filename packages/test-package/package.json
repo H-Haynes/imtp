@@ -15,7 +15,7 @@
     "build:esm": "vite build --mode esm",
     "build:cjs": "vite build --mode cjs",
     "build:umd": "vite build --mode umd",
-    "build:min": "vite build --mode min",
+    "build:min": "node ../../scripts/build-min.js",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
