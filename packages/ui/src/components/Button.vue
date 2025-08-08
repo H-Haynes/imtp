@@ -3,7 +3,7 @@
     :type="type"
     :class="buttonClasses"
     :disabled="disabled || loading"
-    @click="handleClick"
+    @click="$emit('click', $event as unknown as MouseEvent)"
   >
     <svg
       v-if="loading"

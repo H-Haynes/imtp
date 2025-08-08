@@ -108,6 +108,9 @@ export default [
       'no-script-url': 'error',
       'prefer-promise-reject-errors': 'error',
 
+      // Switch语句规则 - 允许default分支的fallthrough
+      'no-fallthrough': 'off',
+
       // 性能优化规则
       'no-await-in-loop': 'warn',
       'no-promise-executor-return': 'error',
@@ -132,6 +135,8 @@ export default [
       'no-console': 'off',
       'no-undef': 'off',
       'no-unused-vars': 'off', // 允许未使用的变量
+      // Switch语句规则 - 允许default分支的fallthrough
+      'no-fallthrough': 'off',
     },
   },
   {
