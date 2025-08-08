@@ -120,6 +120,7 @@ export default [
       '**/*.config.ts',
       'uno.config.ts',
       'vitest.config.ts',
+      '.lintstagedrc.js',
     ],
   },
 ];
