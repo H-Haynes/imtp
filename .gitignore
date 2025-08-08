@@ -95,3 +95,24 @@ Thumbs.db
 
 # Changeset
 .changeset/
+
+# 备份文件
+.backups/
+
+# 环境文件
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# 安全扫描结果
+snyk-report.json
+snyk-results.json
+
+# 性能监控数据
+performance-logs/
+build-metrics.json
+
+# 通知日志
+notification-logs/

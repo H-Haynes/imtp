@@ -1,0 +1,15 @@
+# GraphQL Code Generator 配置
+overwrite: true
+schema: 'http://localhost:4000/graphql'
+documents: 'packages/types/src/graphql/**/*.graphql'
+generates:
+  packages/types/src/graphql/generated/:
+    preset: 'client'
+    plugins:
+      - 'typescript'
+      - 'typescript-operations'
+      - 'typescript-react-apollo'
+    config:
+      withHooks: true
+      withComponent: false
+      withHOC: false

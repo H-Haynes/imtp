@@ -21,11 +21,27 @@ export function createViteLibConfig(options: ViteLibConfigOptions) {
         external: options.external || [],
         output: {
           globals: options.globals || {},
+          // 优化代码分割
+          manualChunks: undefined,
+          // 减少包体积
+          compact: true,
         },
       },
       minify: 'terser',
       sourcemap: true,
       outDir: 'dist',
+      // 优化构建性能
+      target: 'es2020',
+      // 减少构建时间
+      reportCompressedSize: false,
+      // 优化依赖处理
+      commonjsOptions: {
+        include: [/node_modules/],
+      },
+    },
+    // 优化开发体验
+    optimizeDeps: {
+      include: options.external || [],
     },
   });
 }

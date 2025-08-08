@@ -1,0 +1,28 @@
+{
+  "entryPoints": ["packages/core/src/index.ts"],
+  "out": "docs",
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/tests/**",
+    "**/*.test.*",
+    "**/*.spec.*"
+  ],
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeExternals": true,
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "categoryOrder": ["Core", "UI Components", "Data Processing", "Types", "*"],
+  "theme": "default",
+  "name": "IMTP Documentation",
+  "readme": "README.md",
+  "plugin": ["typedoc-plugin-markdown"],
+  "hideGenerator": true,
+  "sort": ["source-order"],
+  "searchInComments": true,
+  "validation": {
+    "invalidLink": true,
+    "notExported": true
+  }
+}

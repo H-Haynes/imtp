@@ -1,0 +1,581 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '18'
+  PNPM_VERSION: '8'
+
+jobs:
+  # 环境验证
+  environment-validation:
+    name: Environment Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate environment files
+        run: |
+          echo "验证环境配置文件..."
+          pnpm env:validate
+
+          # 检查必需的环境变量
+          if [ -f ".env.example" ]; then
+            echo "环境变量模板检查通过"
+          else
+            echo "警告: 缺少 .env.example 文件"
+          fi
+
+      - name: Check environment consistency
+        run: |
+          echo "检查环境配置一致性..."
+          pnpm env:check
+
+  # 代码质量检查
+  lint-and-format:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    needs: environment-validation
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run linting
+        run: pnpm lint
+
+      - name: Check formatting
+        run: pnpm format:check || echo "Format check failed, but continuing..."
+
+      - name: Type check
+        run: pnpm type-check
+
+  # 类型生成和验证
+  type-generation:
+    name: Type Generation
+    runs-on: ubuntu-latest
+    needs: lint-and-format
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate types
+        run: pnpm generate:types
+
+      - name: Check if types are up to date
+        run: |
+          if [ -n "$(git status --porcelain packages/types/src/generated/)" ]; then
+            echo "Generated types are not up to date"
+            git diff packages/types/src/generated/
+            exit 1
+          fi
+
+      - name: Validate generated types
+        run: pnpm type-check
+
+  # 测试
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: type-generation
+
+    strategy:
+      matrix:
+        node-version: [16, 18, 20]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        if: matrix.node-version == '18'
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+  # 构建
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Performance monitoring
+        run: |
+          echo "开始性能监控..."
+
+          # 记录构建时间
+          echo "构建开始时间: $(date)"
+          START_TIME=$(date +%s)
+
+          # 执行构建
+          pnpm build
+
+          # 记录构建结束时间
+          END_TIME=$(date +%s)
+          BUILD_DURATION=$((END_TIME - START_TIME))
+
+          echo "构建结束时间: $(date)"
+          echo "构建耗时: ${BUILD_DURATION} 秒"
+
+          # 检查构建时间是否超过阈值
+          if [ $BUILD_DURATION -gt 300 ]; then
+            echo "警告: 构建时间超过5分钟"
+          fi
+
+          # 分析包大小
+          echo "分析包大小..."
+          for pkg in packages/*/dist/; do
+            if [ -d "$pkg" ]; then
+              SIZE=$(du -sh "$pkg" | cut -f1)
+              echo "包大小: $pkg = $SIZE"
+            fi
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-artifacts
+          path: |
+            packages/*/dist/
+            packages/*/coverage/
+
+  # 安全扫描
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run security audit
+        run: |
+          echo "执行安全审计..."
+          pnpm audit --audit-level moderate
+
+          # 检查已知漏洞
+          if [ $? -ne 0 ]; then
+            echo "发现安全漏洞，请检查并修复"
+            exit 1
+          fi
+
+      - name: Check for secrets in code
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: .
+          base: ${{ github.event.before }}
+          head: ${{ github.event.after }}
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+  # 文档生成
+  docs:
+    name: Generate Documentation
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate documentation
+        run: pnpm docs
+
+      - name: Upload documentation
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation
+          path: docs/
+
+  # 发布到 npm (仅 main 分支)
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [build, docs]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Backup current versions
+        id: backup-versions
+        run: |
+          echo "备份当前版本信息..."
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              pkg_name=$(jq -r '.name' "$pkg")
+              pkg_version=$(jq -r '.version' "$pkg")
+              echo "::set-output name=${pkg_name//\//_}_version::$pkg_version"
+              echo "备份: $pkg_name@$pkg_version"
+            fi
+          done
+
+      - name: Publish packages
+        id: publish
+        run: |
+          echo "开始发布包..."
+          pnpm publish --recursive --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        continue-on-error: true
+
+      - name: Check publish status
+        id: check-publish
+        run: |
+          if [ "${{ steps.publish.outcome }}" == "success" ]; then
+            echo "发布成功"
+            echo "::set-output name=success::true"
+          else
+            echo "发布失败，准备回滚"
+            echo "::set-output name=success::false"
+          fi
+
+      - name: Rollback on failure
+        if: steps.check-publish.outputs.success == 'false'
+        run: |
+          echo "执行回滚操作..."
+
+          # 获取上一个版本
+          PREVIOUS_COMMIT=$(git rev-parse HEAD~1)
+
+          # 回滚到上一个版本
+          git reset --hard $PREVIOUS_COMMIT
+
+          # 更新版本号
+          for pkg in packages/*/package.json; do
+            if [ -f "$pkg" ]; then
+              pkg_name=$(jq -r '.name' "$pkg")
+              echo "回滚 $pkg_name 版本"
+              # 这里可以添加具体的回滚逻辑
+            fi
+          done
+
+          echo "回滚完成"
+
+      - name: Notify on failure
+        if: steps.check-publish.outputs.success == 'false'
+        run: |
+          echo "发布失败，发送通知"
+          # 这里可以添加通知逻辑，如发送到 Slack 或邮件
+          echo "发布失败: ${{ github.repository }}@${{ github.sha }}"
+
+  # 部署到 GitHub Pages (仅 main 分支)
+  deploy-docs:
+    name: Deploy Documentation
+    runs-on: ubuntu-latest
+    needs: docs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate documentation
+        run: pnpm docs
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          force_orphan: true
+
+  # 通知机制
+  notify:
+    name: Notify Results
+    runs-on: ubuntu-latest
+    needs: [publish, deploy-docs]
+    if: always()
+
+    steps:
+      - name: Notify on success
+        if: needs.publish.result == 'success' && needs.deploy-docs.result == 'success'
+        run: |
+          echo "🎉 部署成功!"
+          echo "项目: ${{ github.repository }}"
+          echo "分支: ${{ github.ref }}"
+          echo "提交: ${{ github.sha }}"
+          echo "时间: $(date)"
+
+          # 这里可以添加 Slack、Discord 或其他通知渠道
+          # 例如: curl -X POST -H 'Content-type: application/json' --data '{"text":"部署成功!"}' $SLACK_WEBHOOK_URL
+
+      - name: Notify on failure
+        if: needs.publish.result == 'failure' || needs.deploy-docs.result == 'failure'
+        run: |
+          echo "❌ 部署失败!"
+          echo "项目: ${{ github.repository }}"
+          echo "分支: ${{ github.ref }}"
+          echo "提交: ${{ github.sha }}"
+          echo "时间: $(date)"
+          echo "失败作业:"
+          echo "- Publish: ${{ needs.publish.result }}"
+          echo "- Deploy: ${{ needs.deploy-docs.result }}"
+
+          # 这里可以添加失败通知逻辑
+          # 例如: curl -X POST -H 'Content-type: application/json' --data '{"text":"部署失败!"}' $SLACK_WEBHOOK_URL

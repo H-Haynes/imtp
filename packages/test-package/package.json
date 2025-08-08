@@ -19,7 +19,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src --ext .ts,.tsx --no-warn-ignored",
     "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "clean": "rimraf dist",
     "prepublishOnly": "npm run build"
@@ -37,5 +37,8 @@
     "typescript": "^5.9.2",
     "vite": "^7.1.0",
     "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "@imtp/types": "workspace:*"
   }
 }
