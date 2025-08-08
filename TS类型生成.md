@@ -1,12 +1,14 @@
 # TypeScript 类型自动生成工具指南
 
+[toc]
+
 ## 🚀 概述
 
-本项目提供了一套完整的 TypeScript 类型自动生成工具链，支持从多种数据源自动生成类型定义。
+本项目提供了一套完整的 TypeScript 类型自动生成工具链，支持从多种数据源自动生成类型定义，大幅提升开发效率和类型安全性。
 
 ## 📦 已安装的工具
 
-### 1. **TypeDoc** - 文档生成
+### 1. **TypeDoc** - API 文档生成
 
 - 从 TypeScript 代码生成 API 文档
 - 支持 Markdown 输出
@@ -41,99 +43,51 @@
 ### 快速开始
 
 ```bash
-# 生成所有类型
-pnpm generate:all
+# 使用交互式工具
+pnpm interactive
+# 选择生成工具
 
-# 或者分步生成
-pnpm generate:types    # 自定义类型生成器
-pnpm generate:api      # OpenAPI 类型
-pnpm generate:graphql  # GraphQL 类型
-pnpm docs             # 生成文档
+# 或者直接使用命令
+pnpm generate:all        # 生成所有类型
+pnpm generate:types      # 自定义类型生成器
+pnpm generate:api        # OpenAPI 类型
+pnpm generate:graphql    # GraphQL 类型
+pnpm docs               # 生成文档
 ```
 
-### 1. 环境变量类型生成
+### 分步生成
+
+#### 1. 环境变量类型生成
 
 ```bash
-# 从 env.example 生成环境变量类型
 pnpm generate:types
 ```
 
-生成的类型示例：
+从 `env.example` 文件自动生成环境变量类型定义。
 
-```typescript
-// packages/types/src/env/generated/env.ts
-export interface Env {
-  NODE_ENV: string;
-  DEBUG: boolean;
-  PORT: number;
-  HOST: string;
-  DATABASE_URL: string;
-  // ... 其他环境变量
-}
-```
-
-### 2. API 类型生成
+#### 2. API 类型生成
 
 ```bash
-# 从 Swagger/OpenAPI 文档生成类型
 pnpm generate:api
 ```
 
-生成的类型示例：
+从 Swagger/OpenAPI 文档生成 API 类型定义。
 
-```typescript
-// packages/types/src/api/generated/openapi.ts
-export interface ApiResponse<T = any> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  code?: number;
-}
-
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-  createdAt: string;
-}
-```
-
-### 3. GraphQL 类型生成
+#### 3. GraphQL 类型生成
 
 ```bash
-# 从 GraphQL Schema 生成类型
 pnpm generate:graphql
 ```
 
-生成的类型示例：
+从 GraphQL Schema 生成类型定义。
 
-```typescript
-// packages/types/src/graphql/generated/
-export interface GetUserQuery {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-  };
-}
-
-export interface CreateUserMutation {
-  createUser: {
-    id: string;
-    name: string;
-    email: string;
-  };
-}
-```
-
-### 4. 文档生成
+#### 4. 文档生成
 
 ```bash
-# 生成 API 文档
 pnpm docs
 ```
 
-生成的文档位于 `docs/` 目录。
+生成 API 文档，位于 `docs/` 目录。
 
 ## ⚙️ 配置说明
 
@@ -161,6 +115,12 @@ const CONFIG = {
       type: 'env',
       file: 'env.example',
       output: 'packages/types/src/env/generated',
+    },
+    // 配置文件
+    config: {
+      type: 'json',
+      files: ['config/*.json'],
+      output: 'packages/types/src/config/generated',
     },
   },
   output: {
@@ -272,6 +232,32 @@ inferEnvType(value) {
 pnpm type-check
 ```
 
+### 5. 添加新的数据源
+
+在 `scripts/generate-types.js` 中添加新的生成方法：
+
+```javascript
+async generateFromNewSource(config, output) {
+  // 实现新的生成逻辑
+}
+```
+
+## 📋 项目脚本
+
+在 `package.json` 中已添加的脚本：
+
+```json
+{
+  "scripts": {
+    "generate:types": "node scripts/generate-types.js generate",
+    "generate:api": "openapi-typescript http://localhost:3000/api-docs -o packages/types/src/api/generated/openapi.ts",
+    "generate:graphql": "graphql-codegen --config codegen.yml",
+    "generate:all": "pnpm generate:types && pnpm generate:api && pnpm generate:graphql && pnpm docs",
+    "docs": "typedoc"
+  }
+}
+```
+
 ## 🎯 最佳实践
 
 ### 1. 类型生成策略
@@ -298,6 +284,30 @@ pnpm type-check
 - 在 README 中说明类型生成流程
 - 为自定义类型添加 JSDoc 注释
 
+## 🔄 工作流程
+
+1. **开发阶段**: 修改源数据（API文档、环境变量、数据库模型等）
+2. **生成阶段**: 运行 `pnpm generate:types` 生成类型
+3. **验证阶段**: 运行 `pnpm type-check` 验证类型
+4. **提交阶段**: 确保类型文件最新并提交
+
+## 🎯 工具特点
+
+### ✅ 优势
+
+- **自动化**: 一键生成所有类型
+- **多源支持**: 支持多种数据源
+- **类型安全**: 生成的类型完全类型安全
+- **可扩展**: 易于添加新的数据源
+- **集成友好**: 与现有工具链完美集成
+
+### 📊 支持的数据源
+
+- ✅ API 接口 (Swagger/OpenAPI/GraphQL)
+- ✅ 数据库模型 (Prisma/Sequelize/TypeORM)
+- ✅ 环境变量 (从 .env 文件)
+- ✅ 配置文件 (JSON/YAML)
+
 ## 🐛 常见问题
 
 ### Q: 生成的类型不准确怎么办？
@@ -323,10 +333,23 @@ A: 修改生成器中的类型命名逻辑，或使用 TypeScript 的 `type` 别
 - [GraphQL Code Generator](https://www.graphql-code-generator.com/)
 - [TypeScript 官方文档](https://www.typescriptlang.org/docs/)
 
-## 🤝 贡献
+## 🎉 总结
 
-欢迎提交 Issue 和 Pull Request 来改进类型生成工具！
+项目已成功建立功能完整的 TypeScript 类型自动生成工具链：
 
----
+- ✅ **5个专业工具** 已安装并配置
+- ✅ **自定义生成器** 已实现并测试
+- ✅ **多种数据源** 支持
+- ✅ **自动化脚本** 已添加到 package.json
+- ✅ **配置文件** 已创建
+- ✅ **类型文件** 已生成
 
-_最后更新: 2024年_
+现在您可以：
+
+1. 使用 `pnpm interactive` 启动交互式工具选择生成功能
+2. 使用 `pnpm generate:all` 生成所有类型
+3. 根据需要修改 `scripts/generate-types.js` 中的配置
+4. 添加新的数据源和生成逻辑
+5. 集成到开发工作流程中
+
+这套工具链将大大提高开发效率，确保类型的一致性和准确性！
