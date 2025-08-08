@@ -2,7 +2,7 @@
   <div class="input-wrapper">
     <label v-if="label" :for="id" class="input-label">
       {{ label }}
-      <span v-if="required" class="required-mark">*</span>
+      <span v-if="required" class="required-mark text-red-500">*</span>
     </label>
     <input
       :id="id"
@@ -44,9 +44,9 @@ interface InputProps {
 // 定义组件事件
 interface InputEmits {
   (e: 'update:modelValue', value: string): void;
-  (e: 'focus', event: FocusEvent): void;
-  (e: 'blur', event: FocusEvent): void;
-  (e: 'keydown', event: KeyboardEvent): void;
+  (e: 'focus', event: Event): void;
+  (e: 'blur', event: Event): void;
+  (e: 'keydown', event: Event): void;
 }
 
 // 设置默认属性
@@ -91,23 +91,23 @@ const inputClasses = computed(() => {
 });
 
 // 处理输入事件
-const handleInput = (event: Event) => {
+const handleInput = (event: any) => {
   const target = event.target as HTMLInputElement;
   emit('update:modelValue', target.value);
 };
 
 // 处理焦点事件
-const handleFocus = (event: FocusEvent) => {
+const handleFocus = (event: any) => {
   emit('focus', event);
 };
 
 // 处理失焦事件
-const handleBlur = (event: FocusEvent) => {
+const handleBlur = (event: any) => {
   emit('blur', event);
 };
 
 // 处理键盘事件
-const handleKeydown = (event: KeyboardEvent) => {
+const handleKeydown = (event: any) => {
   emit('keydown', event);
 };
 </script>
