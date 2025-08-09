@@ -33,11 +33,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "devDependencies": {
-    "typescript": "^5.9.2",
-    "vite": "^7.1.0",
-    "vitest": "^3.2.4"
-  },
+  "devDependencies": {},
   "dependencies": {
     "@imtp/types": "workspace:*"
   }

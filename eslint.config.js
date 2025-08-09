@@ -9,6 +9,7 @@ export default [
   prettier,
   {
     files: ['**/*.ts', '**/*.tsx'],
+    ignores: ['docs/auto-imports.d.ts', 'docs/components.d.ts', '**/*.d.ts'],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
@@ -406,6 +407,11 @@ export default [
       'uno.config.ts',
       'vitest.config.ts',
       '.lintstagedrc.js',
+      // VitePress 和文档相关的自动生成文件
+      'docs/auto-imports.d.ts',
+      'docs/.vitepress/cache/',
+      'docs/.vitepress/dist/',
+      '**/auto-imports.d.ts',
       // types 包中的示例代码和生成文件
       'packages/types/src/generated/',
       'packages/types/src/api/generated/',

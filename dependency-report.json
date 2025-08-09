@@ -1,45 +1,45 @@
 {
-  "timestamp": "2025-08-08T08:26:57.854Z",
+  "timestamp": "2025-08-08T17:27:58.335Z",
   "root": {
     "name": "@imtp/root",
     "dependencies": 5,
-    "devDependencies": 28
+    "devDependencies": 30
   },
   "packages": [
     {
       "name": "core",
       "dependencies": 1,
-      "devDependencies": 4
+      "devDependencies": 0
     },
     {
       "name": "data",
       "dependencies": 2,
-      "devDependencies": 4
+      "devDependencies": 0
     },
     {
       "name": "example-package",
       "dependencies": 1,
-      "devDependencies": 4
+      "devDependencies": 0
     },
     {
       "name": "test-package",
       "dependencies": 1,
-      "devDependencies": 3
+      "devDependencies": 0
     },
     {
       "name": "types",
       "dependencies": 0,
-      "devDependencies": 5
+      "devDependencies": 1
     },
     {
       "name": "ui",
-      "dependencies": 4,
-      "devDependencies": 9
+      "dependencies": 2,
+      "devDependencies": 4
     },
     {
       "name": "utils",
       "dependencies": 1,
-      "devDependencies": 3
+      "devDependencies": 0
     }
   ],
   "totalPackages": 7

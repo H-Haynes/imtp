@@ -116,3 +116,5 @@ build-metrics.json
 
 # 通知日志
 notification-logs/
+docs/.vitepress
+.vitepress

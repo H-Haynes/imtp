@@ -80,12 +80,30 @@ class DependencyManager {
 
     // 检查冲突
     const conflicts = [];
+    const duplicates = [];
+
     for (const [name, versions] of allDeps.entries()) {
-      if (versions.size > 1) {
+      const versionArray = Array.from(versions);
+
+      // 跳过 workspace 依赖，这些是正常的
+      if (name.startsWith('@imtp/')) {
+        continue;
+      }
+
+      // 检查是否有真正的版本冲突（不同版本）
+      const uniqueVersions = new Set(versionArray.map(v => v.version));
+      if (uniqueVersions.size > 1) {
         conflicts.push({
           name,
-          versions: Array.from(versions),
-          packages: Array.from(versions).map(v => v.package),
+          versions: versionArray,
+          packages: versionArray.map(v => v.package),
+        });
+      } else if (versionArray.length > 1) {
+        // 相同版本但重复定义
+        duplicates.push({
+          name,
+          version: versionArray[0].version,
+          packages: versionArray.map(v => v.package),
         });
       }
     }
@@ -102,7 +120,20 @@ class DependencyManager {
       console.log('✅ 未发现版本冲突');
     }
 
-    return conflicts;
+    if (duplicates.length > 0) {
+      console.log('\n📋 发现重复依赖（相同版本）:');
+      duplicates.forEach(duplicate => {
+        console.log(`\n  ${duplicate.name} (${duplicate.version}):`);
+        duplicate.packages.forEach(pkg => {
+          console.log(`    ${pkg}`);
+        });
+      });
+      console.log(
+        '\n💡 建议：考虑将相同版本的依赖提升到根目录的 workspace 配置中'
+      );
+    }
+
+    return { conflicts, duplicates };
   }
 
   collectDependencies(packageJson, allDeps) {
@@ -290,6 +321,131 @@ class DependencyManager {
     }
   }
 
+  // 修复重复依赖
+  async fixDuplicates() {
+    console.log('\n🔧 修复重复依赖...');
+
+    const { duplicates } = this.detectConflicts();
+
+    if (duplicates.length === 0) {
+      console.log('✅ 没有需要修复的重复依赖');
+      return;
+    }
+
+    // 分析哪些依赖可以提升到根目录
+    const candidatesForPromotion = duplicates.filter(duplicate => {
+      // 只考虑开发依赖，生产依赖通常需要保持在各包中
+      return this.isDevDependency(duplicate.name);
+    });
+
+    if (candidatesForPromotion.length === 0) {
+      console.log('💡 没有适合提升到根目录的依赖');
+      return;
+    }
+
+    console.log('\n📦 建议提升到根目录的依赖:');
+    candidatesForPromotion.forEach(candidate => {
+      console.log(`  ${candidate.name} (${candidate.version})`);
+    });
+
+    // 检查是否要执行自动修复
+    const shouldAutoFix = process.argv.includes('--auto-fix');
+
+    if (shouldAutoFix) {
+      await this.performAutoFix(candidatesForPromotion);
+    } else {
+      console.log(
+        '\n💡 要自动修复，请运行: node scripts/dependency-manager.js fix-duplicates --auto-fix'
+      );
+    }
+  }
+
+  async performAutoFix(candidates) {
+    console.log('\n🚀 开始自动修复...');
+
+    try {
+      // 备份当前的 package.json 文件
+      const backupDir = join(rootDir, '.backup');
+      if (!existsSync(backupDir)) {
+        execSync(`mkdir -p "${backupDir}"`);
+      }
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      execSync(
+        `cp "${join(rootDir, 'package.json')}" "${join(backupDir, `package.json.${timestamp}`)}"`
+      );
+
+      for (const pkg of this.packages) {
+        execSync(
+          `cp "${join(pkg.path, 'package.json')}" "${join(backupDir, `${pkg.name}.package.json.${timestamp}`)}"`
+        );
+      }
+
+      console.log('✅ 已备份所有 package.json 文件');
+
+      // 为每个候选依赖执行提升
+      for (const candidate of candidates) {
+        await this.promoteDependency(candidate);
+      }
+
+      console.log('\n✅ 自动修复完成！');
+      console.log('💡 建议运行 "pnpm install" 来更新依赖');
+    } catch (error) {
+      console.error('❌ 自动修复失败:', error.message);
+      console.log('💡 请检查备份文件并手动恢复');
+    }
+  }
+
+  async promoteDependency(candidate) {
+    console.log(`\n📦 提升依赖: ${candidate.name} (${candidate.version})`);
+
+    // 确保根目录有该依赖
+    if (!this.rootPackageJson.devDependencies?.[candidate.name]) {
+      if (!this.rootPackageJson.devDependencies) {
+        this.rootPackageJson.devDependencies = {};
+      }
+      this.rootPackageJson.devDependencies[candidate.name] = candidate.version;
+    }
+
+    // 从各个包中移除该依赖
+    for (const pkg of this.packages) {
+      if (pkg.packageJson.devDependencies?.[candidate.name]) {
+        delete pkg.packageJson.devDependencies[candidate.name];
+        console.log(`  从 ${pkg.name} 中移除 ${candidate.name}`);
+      }
+    }
+
+    // 保存修改
+    writeFileSync(
+      join(rootDir, 'package.json'),
+      JSON.stringify(this.rootPackageJson, null, 2)
+    );
+
+    for (const pkg of this.packages) {
+      writeFileSync(
+        join(pkg.path, 'package.json'),
+        JSON.stringify(pkg.packageJson, null, 2)
+      );
+    }
+  }
+
+  isDevDependency(depName) {
+    // 检查是否在所有包中都是开发依赖
+    const isDevInRoot = this.rootPackageJson.devDependencies?.[depName];
+
+    for (const pkg of this.packages) {
+      const isDevInPackage = pkg.packageJson.devDependencies?.[depName];
+      const isProdInPackage = pkg.packageJson.dependencies?.[depName];
+
+      // 如果某个包中作为生产依赖，则不适合提升
+      if (isProdInPackage) {
+        return false;
+      }
+    }
+
+    return isDevInRoot;
+  }
+
   // 生成依赖报告
   generateReport() {
     console.log('\n📋 生成依赖报告...');
@@ -349,6 +505,9 @@ if (args.length === 0) {
     case 'conflicts':
       manager.detectConflicts();
       break;
+    case 'fix-duplicates':
+      manager.fixDuplicates();
+      break;
     case 'security':
       manager.securityScan();
       break;
@@ -366,13 +525,14 @@ if (args.length === 0) {
 用法: node scripts/dependency-manager.js [command]
 
 命令:
-  updates    检查依赖更新
-  conflicts  检测版本冲突
-  security   安全漏洞扫描
-  size       包大小分析
-  cleanup    清理未使用依赖
-  report     生成依赖报告
-  (无参数)   运行所有检查
+  updates        检查依赖更新
+  conflicts      检测版本冲突
+  fix-duplicates 修复重复依赖
+  security       安全漏洞扫描
+  size           包大小分析
+  cleanup        清理未使用依赖
+  report         生成依赖报告
+  (无参数)       运行所有检查
       `);
   }
 }

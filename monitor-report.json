@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-08-08T06:53:46.790Z",
+  "timestamp": "2025-08-08T17:33:13.146Z",
   "summary": {
     "buildSuccess": true,
     "testSuccess": true,
@@ -7,32 +7,24 @@
     "totalVulnerabilities": 0
   },
   "details": {
-    "timestamp": "2025-08-08T06:52:55.032Z",
+    "timestamp": "2025-08-08T17:33:13.139Z",
     "build": {
-      "duration": 1885,
+      "duration": 1537,
       "success": true,
       "packages": []
     },
     "test": {
-      "duration": 3533,
+      "duration": 3785,
       "success": true,
-      "coverage": 83.87
+      "coverage": 72.83
     },
     "security": {
       "vulnerabilities": 0,
       "auditPassed": true
     },
     "performance": {
-      "packageSizes": {
-        "core": 37709,
-        "data": 52765,
-        "example-package": 5016,
-        "test-package": 2316,
-        "types": 2977,
-        "ui": 471548,
-        "utils": 2247
-      },
-      "buildTime": 1885
+      "packageSizes": {},
+      "buildTime": 0
     }
   }
 }

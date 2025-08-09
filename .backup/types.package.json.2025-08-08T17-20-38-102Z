@@ -1,7 +1,7 @@
 {
-  "name": "@imtp/ui",
+  "name": "@imtp/types",
   "version": "1.0.0",
-  "description": "IMTP Vue3 UI components package",
+  "description": "IMTP shared types package",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -19,16 +19,15 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint src --ext .ts,.tsx,.vue --no-warn-ignored",
-    "lint:fix": "eslint src --ext .ts,.tsx,.vue --fix",
+    "lint": "eslint src --ext .ts,.tsx --no-warn-ignored",
+    "lint:fix": "eslint src --ext .ts,.tsx --fix",
     "clean": "rimraf dist",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "ui",
-    "components",
-    "vue3",
-    "composition-api"
+    "types",
+    "typescript",
+    "shared"
   ],
   "author": "IMTP",
   "license": "MIT",
@@ -36,16 +35,10 @@
     "access": "public"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^5.0.0",
-    "@vue/test-utils": "^2.4.0",
-    "jsdom": "^26.1.0",
-    "vue": "^3.4.0"
-  },
-  "dependencies": {
-    "@imtp/core": "workspace:*",
-    "@imtp/types": "workspace:*"
-  },
-  "peerDependencies": {
-    "vue": ">=3.0.0"
+    "typescript": "^5.9.2",
+    "vite": "^7.1.0",
+    "vitest": "^3.2.4",
+    "@types/react": "^18.3.12",
+    "@types/node": "^24.2.0"
   }
 }
