@@ -97,6 +97,10 @@ Thumbs.db
 .changeset/
 
 # 备份文件
+.backup/
+
+
+# 备份文件
 .backups/
 
 # 环境文件

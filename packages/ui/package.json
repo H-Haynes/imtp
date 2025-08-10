@@ -19,6 +19,8 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
+    "test:watch": "vitest --watch",
+    "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx,.vue --no-warn-ignored",
     "lint:fix": "eslint src --ext .ts,.tsx,.vue --fix",
     "clean": "rimraf dist",
