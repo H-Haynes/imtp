@@ -122,3 +122,6 @@ build-metrics.json
 notification-logs/
 docs/.vitepress
 .vitepress
+dependency-report.json
+monitor-logs.json
+**/*-report.json

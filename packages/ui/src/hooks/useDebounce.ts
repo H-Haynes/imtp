@@ -1,7 +1,7 @@
-import { ref, watch, type Ref } from 'vue';
+import { ref, watch, type Ref, type UnwrapRef } from 'vue';
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type, @typescript-eslint/explicit-module-boundary-types
-export function useDebounce<T>(value: T, delay: number) {
+export function useDebounce<T>(value: T, delay: number): Ref<UnwrapRef<T>> {
   const debouncedValue = ref<T>(value);
 
   let timeoutId: NodeJS.Timeout | null = null;
@@ -14,8 +14,7 @@ export function useDebounce<T>(value: T, delay: number) {
       }
 
       timeoutId = setTimeout(() => {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        debouncedValue.value = newValue;
+        debouncedValue.value = newValue as UnwrapRef<T>;
       }, delay);
     },
     { immediate: true }

@@ -8,7 +8,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +30,17 @@ envFiles.reverse().forEach(file => {
   const envPath = resolve(process.cwd(), file);
   config({ path: envPath });
 });
+
+// 颜色配置
+const COLORS = {
+  reset: '\x1b[0m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  red: '\x1b[31m',
+  blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  magenta: '\x1b[35m',
+};
 
 // 配置
 const CONFIG = {
@@ -83,20 +94,33 @@ class TypeGenerator {
    * 主生成函数
    */
   async generate() {
-    console.log('🚀 开始生成 TypeScript 类型...');
+    console.log(`${COLORS.cyan}🚀 开始生成 TypeScript 类型...${COLORS.reset}`);
+    const startTime = Date.now();
 
     try {
-      // 1. 生成 API 类型
-      await this.generateApiTypes();
+      const steps = [
+        { name: 'API 类型', func: () => this.generateApiTypes() },
+        { name: '数据库类型', func: () => this.generateDatabaseTypes() },
+        { name: '环境变量类型', func: () => this.generateEnvTypes() },
+        { name: '配置类型', func: () => this.generateConfigTypes() },
+      ];
 
-      // 2. 生成数据库类型
-      await this.generateDatabaseTypes();
+      for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
+        console.log(
+          `\n${COLORS.blue}📝 步骤 ${i + 1}/${steps.length}: 生成${step.name}${COLORS.reset}`
+        );
 
-      // 3. 生成环境变量类型
-      await this.generateEnvTypes();
-
-      // 4. 生成配置类型
-      await this.generateConfigTypes();
+        try {
+          await step.func();
+          console.log(`${COLORS.green}✅ ${step.name}生成成功${COLORS.reset}`);
+        } catch (error) {
+          console.log(
+            `${COLORS.red}❌ ${step.name}生成失败: ${error.message}${COLORS.reset}`
+          );
+          // 继续执行其他步骤，不中断整个流程
+        }
+      }
 
       // 5. 生成索引文件
       await this.generateIndexFiles();
@@ -486,25 +510,88 @@ export * from './shared';
   }
 }
 
-// 命令行参数处理
-const args = process.argv.slice(2);
-const command = args[0];
-
-if (command === 'generate') {
-  const generator = new TypeGenerator();
-  generator.generate();
-} else if (command === 'watch') {
-  console.log('👀 监听模式 - 文件变化时自动生成类型');
-  // 这里可以实现文件监听逻辑
-} else {
+// 显示帮助信息
+function showHelp() {
   console.log(`
-🔧 TypeScript 类型生成工具
+${COLORS.cyan}🔧 TypeScript 类型生成工具${COLORS.reset}
+${COLORS.blue}================================${COLORS.reset}
 
-用法:
-  node scripts/generate-types.js generate  # 生成类型
-  node scripts/generate-types.js watch     # 监听模式
+用法: node scripts/generate-types.js [command]
 
-配置:
+${COLORS.yellow}命令:${COLORS.reset}
+  ${COLORS.green}generate${COLORS.reset}    生成所有类型定义
+  ${COLORS.green}watch${COLORS.reset}       监听模式 (文件变化时自动生成)
+  ${COLORS.green}api${COLORS.reset}         仅生成 API 类型
+  ${COLORS.green}db${COLORS.reset}          仅生成数据库类型
+  ${COLORS.green}env${COLORS.reset}         仅生成环境变量类型
+  ${COLORS.green}config${COLORS.reset}      仅生成配置类型
+  ${COLORS.green}help${COLORS.reset}        显示此帮助信息
+
+${COLORS.yellow}示例:${COLORS.reset}
+  node scripts/generate-types.js generate
+  node scripts/generate-types.js api
+  node scripts/generate-types.js watch
+
+${COLORS.yellow}配置:${COLORS.reset}
   编辑 scripts/generate-types.js 中的 CONFIG 对象来配置生成选项
 `);
 }
+
+// 命令行参数处理
+async function main() {
+  const args = process.argv.slice(2);
+  const command = args[0];
+
+  try {
+    const generator = new TypeGenerator();
+
+    switch (command) {
+      case 'generate':
+        await generator.generate();
+        break;
+      case 'watch':
+        console.log(
+          `${COLORS.cyan}👀 监听模式 - 文件变化时自动生成类型${COLORS.reset}`
+        );
+        // 这里可以实现文件监听逻辑
+        break;
+      case 'api':
+        console.log(`${COLORS.blue}📝 生成 API 类型${COLORS.reset}`);
+        await generator.generateApiTypes();
+        break;
+      case 'db':
+        console.log(`${COLORS.blue}📝 生成数据库类型${COLORS.reset}`);
+        await generator.generateDatabaseTypes();
+        break;
+      case 'env':
+        console.log(`${COLORS.blue}📝 生成环境变量类型${COLORS.reset}`);
+        await generator.generateEnvTypes();
+        break;
+      case 'config':
+        console.log(`${COLORS.blue}📝 生成配置类型${COLORS.reset}`);
+        await generator.generateConfigTypes();
+        break;
+      case 'help':
+      case '--help':
+      case '-h':
+      case undefined:
+        showHelp();
+        break;
+      default:
+        console.log(`${COLORS.red}❌ 未知命令: ${command}${COLORS.reset}`);
+        showHelp();
+        process.exit(1);
+    }
+  } catch (error) {
+    console.error(`${COLORS.red}❌ 执行失败: ${error.message}${COLORS.reset}`);
+    process.exit(1);
+  }
+}
+
+// 运行主函数
+main().catch(error => {
+  console.error(
+    `${COLORS.red}❌ 未处理的错误: ${error.message}${COLORS.reset}`
+  );
+  process.exit(1);
+});

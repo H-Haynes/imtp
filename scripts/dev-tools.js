@@ -1,8 +1,30 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process';
-import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { execSync, spawn } from 'child_process';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
+import { resolve, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const rootDir = resolve(__dirname, '..');
+
+// 配置常量
+const CONFIG = {
+  colors: {
+    reset: '\x1b[0m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    red: '\x1b[31m',
+    blue: '\x1b[34m',
+    cyan: '\x1b[36m',
+    magenta: '\x1b[35m',
+  },
+  timeouts: {
+    build: 300000, // 5分钟
+    test: 60000, // 1分钟
+    lint: 30000, // 30秒
+  },
+};
 
 // 获取命令行参数
 const command = process.argv[2];
@@ -18,33 +40,183 @@ if (command && command.startsWith('env:')) {
   actualSubCommand = command.substring(4);
 }
 
-console.log('🔧 IMTP 开发工具\n');
-
 // 显示帮助信息
 function showHelp() {
-  console.log('用法: node scripts/dev-tools.js <command> [sub-command]');
-  console.log('');
-  console.log('命令:');
-  console.log('  analyze         项目分析 (包大小、依赖、构建时间、代码质量)');
-  console.log('  lint            代码质量检查');
-  console.log('  type-check      类型检查');
-  console.log('  env:check       环境变量检查');
-  console.log('  env:validate    环境变量验证');
-  console.log('  env:create      创建环境文件');
-  console.log('  env:local       创建本地环境文件');
-  console.log('  env:list        列出环境文件');
-  console.log('  build:min       最小化构建');
-  console.log('  help            显示此帮助信息');
-  console.log('');
-  console.log('示例:');
-  console.log('  node scripts/dev-tools.js analyze');
-  console.log('  node scripts/dev-tools.js lint');
-  console.log('  node scripts/dev-tools.js env:check');
+  console.log(`
+${CONFIG.colors.cyan}🔧 IMTP 开发工具${CONFIG.colors.reset}
+${CONFIG.colors.blue}========================${CONFIG.colors.reset}
+
+用法: node scripts/dev-tools.js <command> [sub-command]
+
+${CONFIG.colors.yellow}命令:${CONFIG.colors.reset}
+  ${CONFIG.colors.green}analyze${CONFIG.colors.reset}         项目分析 (包大小、依赖、构建时间、代码质量)
+  ${CONFIG.colors.green}lint${CONFIG.colors.reset}            代码质量检查
+  ${CONFIG.colors.green}type-check${CONFIG.colors.reset}      类型检查
+  ${CONFIG.colors.green}env:check${CONFIG.colors.reset}       环境变量检查
+  ${CONFIG.colors.green}env:validate${CONFIG.colors.reset}    环境变量验证
+  ${CONFIG.colors.green}env:create${CONFIG.colors.reset}      创建环境文件
+  ${CONFIG.colors.green}env:local${CONFIG.colors.reset}       创建本地环境文件
+  ${CONFIG.colors.green}env:list${CONFIG.colors.reset}        列出环境文件
+  ${CONFIG.colors.green}build:min${CONFIG.colors.reset}       最小化构建
+  ${CONFIG.colors.green}help${CONFIG.colors.reset}            显示此帮助信息
+
+${CONFIG.colors.yellow}示例:${CONFIG.colors.reset}
+  node scripts/dev-tools.js analyze
+  node scripts/dev-tools.js lint
+  node scripts/dev-tools.js env:check
+`);
+}
+
+// 可中断的命令执行函数
+function runInterruptibleCommand(
+  command,
+  cwd,
+  description = '执行命令',
+  timeout = 300000
+) {
+  return new Promise(resolve => {
+    let isResolved = false;
+    const startTime = Date.now();
+    let progressCleared = false;
+
+    console.log(`🚀 ${description}: ${command}`);
+
+    // 显示进度
+    const progressInterval = setInterval(() => {
+      if (!progressCleared && !isResolved) {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        process.stdout.write(`\r🔄 正在执行 (已用时 ${elapsed}s)...`);
+      }
+    }, 1000);
+
+    // 启动子进程
+    const child = spawn(command.split(' ')[0], command.split(' ').slice(1), {
+      cwd: cwd,
+      stdio: ['inherit', 'pipe', 'inherit'],
+      detached: false,
+      env: { ...process.env, FORCE_COLOR: '1' },
+    });
+
+    let outputBuffer = '';
+
+    // 处理子进程输出
+    if (child.stdout) {
+      child.stdout.on('data', data => {
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+          progressCleared = true;
+        }
+        outputBuffer += data.toString();
+      });
+    }
+
+    // 中断处理器
+    const interruptHandler = () => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+        }
+
+        console.log('\n⚠️  收到中断信号，正在终止子进程...');
+        try {
+          child.kill('SIGKILL');
+        } catch (e) {
+          // 忽略错误
+        }
+        resolve({ success: false, interrupted: true });
+      }
+    };
+
+    // 注册中断处理器
+    process.on('SIGINT', interruptHandler);
+    process.on('SIGTERM', interruptHandler);
+
+    // 超时处理
+    const timeoutId = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+        console.log(`\n⏰ 命令执行超时 (${timeout / 1000}s)`);
+        try {
+          child.kill('SIGKILL');
+        } catch (e) {
+          // 忽略错误
+        }
+        resolve({ success: false, timeout: true });
+      }
+    }, timeout);
+
+    // 子进程退出处理
+    child.on('exit', (code, signal) => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+        clearTimeout(timeoutId);
+
+        // 清理中断处理器
+        process.removeListener('SIGINT', interruptHandler);
+        process.removeListener('SIGTERM', interruptHandler);
+
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+        }
+
+        const duration = Math.floor((Date.now() - startTime) / 1000);
+
+        if (
+          signal === 'SIGINT' ||
+          signal === 'SIGTERM' ||
+          signal === 'SIGKILL'
+        ) {
+          console.log(`\n⚠️  命令被中断 (耗时 ${duration}s)`);
+          resolve({ success: false, interrupted: true });
+        } else if (code === 0) {
+          console.log(`\n✅ 命令执行成功 (耗时 ${duration}s)`);
+          resolve({ success: true, output: outputBuffer });
+        } else {
+          console.log(`\n❌ 命令执行失败 (耗时 ${duration}s, 退出码: ${code})`);
+          resolve({ success: false, output: outputBuffer, code });
+        }
+      }
+    });
+
+    // 子进程错误处理
+    child.on('error', error => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+        clearTimeout(timeoutId);
+
+        // 清理中断处理器
+        process.removeListener('SIGINT', interruptHandler);
+        process.removeListener('SIGTERM', interruptHandler);
+
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+        }
+
+        const duration = Math.floor((Date.now() - startTime) / 1000);
+        console.log(`\n❌ 命令执行错误 (耗时 ${duration}s): ${error.message}`);
+        resolve({ success: false, error: error.message });
+      }
+    });
+  });
 }
 
 // 项目分析功能
-function analyze() {
-  console.log('🔍 项目分析报告\n');
+async function analyze() {
+  console.log(`${CONFIG.colors.cyan}🔍 项目分析报告${CONFIG.colors.reset}\n`);
 
   // 分析包大小
   console.log('📦 包大小分析:');
@@ -279,33 +451,53 @@ function buildMin() {
 }
 
 // 主函数
-function main() {
-  if (!actualCommand || actualCommand === 'help') {
-    showHelp();
-    return;
-  }
-
-  switch (actualCommand) {
-    case 'analyze':
-      analyze();
-      break;
-    case 'lint':
-      lint();
-      break;
-    case 'type-check':
-      typeCheck();
-      break;
-    case 'env':
-      envCommand();
-      break;
-    case 'build:min':
-      buildMin();
-      break;
-    default:
-      console.log(`❌ 未知命令: ${command}`);
+async function main() {
+  try {
+    if (
+      !actualCommand ||
+      actualCommand === 'help' ||
+      actualCommand === '--help' ||
+      actualCommand === '-h'
+    ) {
       showHelp();
-      process.exit(1);
+      return;
+    }
+
+    switch (actualCommand) {
+      case 'analyze':
+        await analyze();
+        break;
+      case 'lint':
+        await lint();
+        break;
+      case 'type-check':
+        await typeCheck();
+        break;
+      case 'env':
+        await envCommand();
+        break;
+      case 'build:min':
+        await buildMin();
+        break;
+      default:
+        console.log(
+          `${CONFIG.colors.red}❌ 未知命令: ${command}${CONFIG.colors.reset}`
+        );
+        showHelp();
+        process.exit(1);
+    }
+  } catch (error) {
+    console.error(
+      `${CONFIG.colors.red}❌ 执行失败: ${error.message}${CONFIG.colors.reset}`
+    );
+    process.exit(1);
   }
 }
 
-main();
+// 运行主函数
+main().catch(error => {
+  console.error(
+    `${CONFIG.colors.red}❌ 未处理的错误: ${error.message}${CONFIG.colors.reset}`
+  );
+  process.exit(1);
+});

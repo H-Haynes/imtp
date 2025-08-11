@@ -1,8 +1,8 @@
-import { ref, type Ref } from 'vue';
+import { ref, type Ref, type UnwrapRef } from 'vue';
 
 interface UseLocalStorageReturn<T> {
-  value: Ref<T>;
-  setValue: (value: T | ((val: T) => T)) => void;
+  value: Ref<UnwrapRef<T>>;
+  setValue: (value: T | ((val: UnwrapRef<T>) => T)) => void;
   removeValue: () => void;
 }
 
@@ -36,7 +36,7 @@ export function useLocalStorage<T>(
   const storedValue = ref<T>(getStoredValue());
 
   // 设置值的函数
-  const setValue = (value: T | ((val: T) => T)): void => {
+  const setValue = (value: T | ((val: UnwrapRef<T>) => T)): void => {
     if (!isClient) {
       return;
     }
@@ -45,7 +45,7 @@ export function useLocalStorage<T>(
       // 允许值是一个函数，这样我们就有了与 useState 相同的 API
       const valueToStore =
         value instanceof Function ? value(storedValue.value) : value;
-      storedValue.value = valueToStore;
+      storedValue.value = valueToStore as UnwrapRef<T>;
       window.localStorage.setItem(key, JSON.stringify(valueToStore));
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -60,7 +60,7 @@ export function useLocalStorage<T>(
     }
 
     try {
-      storedValue.value = initialValue;
+      storedValue.value = initialValue as UnwrapRef<T>;
       window.localStorage.removeItem(key);
     } catch (error) {
       // eslint-disable-next-line no-console
@@ -72,7 +72,7 @@ export function useLocalStorage<T>(
   const handleStorageChange = (e: StorageEvent): void => {
     if (e.key === key && e.newValue !== null) {
       try {
-        storedValue.value = JSON.parse(e.newValue) as T;
+        storedValue.value = JSON.parse(e.newValue) as UnwrapRef<T>;
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error(

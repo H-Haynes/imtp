@@ -8,12 +8,34 @@ import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const rootDir = join(__dirname, '..');
 
+// 配置常量
+const CONFIG = {
+  MAX_HISTORY_SIZE: 10,
+  PROGRESS_INTERVAL: 1000,
+  CLEAR_LINE:
+    '\r                                                            \r',
+  COLORS: {
+    RESET: '\x1b[0m',
+    GREEN: '\x1b[32m',
+    YELLOW: '\x1b[33m',
+    RED: '\x1b[31m',
+    BLUE: '\x1b[34m',
+    CYAN: '\x1b[36m',
+  },
+};
+
 class DependencyManager {
   constructor() {
-    this.rootPackageJson = JSON.parse(
-      readFileSync(join(rootDir, 'package.json'), 'utf8')
-    );
-    this.packages = this.getPackages();
+    try {
+      this.rootPackageJson = JSON.parse(
+        readFileSync(join(rootDir, 'package.json'), 'utf8')
+      );
+      this.packages = this.getPackages();
+      this.commandHistory = [];
+    } catch (error) {
+      console.error('❌ 初始化失败:', error.message);
+      process.exit(1);
+    }
   }
 
   getPackages() {
@@ -21,139 +43,175 @@ class DependencyManager {
     const packages = [];
 
     try {
-      const dirs = execSync('ls packages', { cwd: rootDir, encoding: 'utf8' })
+      // 使用更安全的方式获取目录列表
+      const dirs = execSync('find packages -maxdepth 1 -type d -name "*"', {
+        cwd: rootDir,
+        encoding: 'utf8',
+      })
         .split('\n')
-        .filter(Boolean);
+        .filter(dir => dir && dir !== 'packages')
+        .map(dir => dir.replace('packages/', ''));
 
       for (const dir of dirs) {
         const packageJsonPath = join(packagesDir, dir, 'package.json');
         if (existsSync(packageJsonPath)) {
-          packages.push({
-            name: dir,
-            path: join(packagesDir, dir),
-            packageJson: JSON.parse(readFileSync(packageJsonPath, 'utf8')),
-          });
+          try {
+            const packageJson = JSON.parse(
+              readFileSync(packageJsonPath, 'utf8')
+            );
+            packages.push({
+              name: dir,
+              path: join(packagesDir, dir),
+              packageJson,
+            });
+          } catch (error) {
+            console.warn(`⚠️  跳过无效的 package.json: ${dir}`);
+          }
         }
       }
+
+      console.log(`📦 发现 ${packages.length} 个包`);
     } catch (error) {
-      console.error('Error reading packages:', error.message);
+      console.error('❌ 读取包目录失败:', error.message);
     }
 
     return packages;
   }
 
   // 可中断的命令执行函数
-  runInterruptibleCommand(command, cwd) {
+  runInterruptibleCommand(command, cwd, description = '执行命令') {
     return new Promise((resolve, reject) => {
       let isResolved = false;
       const startTime = Date.now();
-
       let progressCleared = false;
+
+      console.log(`🚀 ${description}: ${command}`);
 
       // 显示进度
       const progressInterval = setInterval(() => {
-        if (!progressCleared) {
+        if (!progressCleared && !isResolved) {
           const elapsed = Math.floor((Date.now() - startTime) / 1000);
-          process.stdout.write(`\r   🔄 正在检查 (已用时 ${elapsed}s)...`);
+          process.stdout.write(
+            `${CONFIG.CLEAR_LINE}🔄 正在执行 (已用时 ${elapsed}s)...`
+          );
         }
-      }, 1000);
+      }, CONFIG.PROGRESS_INTERVAL);
 
       // 启动子进程
-      const child = spawn('pnpm', ['outdated', '--depth=0'], {
+      const child = spawn(command.split(' ')[0], command.split(' ').slice(1), {
         cwd: cwd,
         stdio: ['inherit', 'pipe', 'inherit'],
+        detached: false,
+        env: { ...process.env, FORCE_COLOR: '1' },
       });
 
       let outputBuffer = '';
 
-      // 处理子进程输出，确保不与进度指示器冲突
-      child.stdout.on('data', data => {
-        if (!progressCleared) {
-          // 清除进度行：使用足够长的空格覆盖，然后回到行首
-          process.stdout.write(
-            '\r                                                            \r'
-          );
-          progressCleared = true;
-        }
-        outputBuffer += data;
-      });
-
-      // 子进程结束时输出所有内容
-      child.on('close', () => {
-        if (outputBuffer.trim()) {
-          process.stdout.write(outputBuffer);
-        }
-      });
-
-      // 子进程完成
-      child.on('exit', (code, signal) => {
-        if (!isResolved) {
-          isResolved = true;
-          clearInterval(progressInterval);
-
-          // 如果没有输出内容且进度没有被清除，需要清除进度行
-          if (!progressCleared && !outputBuffer.trim()) {
-            process.stdout.write(
-              '\r                                                            \r'
-            );
-          }
-
-          if (
-            signal === 'SIGTERM' ||
-            signal === 'SIGINT' ||
-            signal === 'SIGKILL'
-          ) {
-            reject(new Error('INTERRUPTED'));
-          } else {
-            resolve(code);
-          }
-        }
-      });
-
-      // 子进程错误
-      child.on('error', error => {
-        if (!isResolved) {
-          isResolved = true;
-          clearInterval(progressInterval);
-
-          // 清除进度行
+      // 处理子进程输出
+      if (child.stdout) {
+        child.stdout.on('data', data => {
           if (!progressCleared) {
-            process.stdout.write(
-              '\r                                                            \r'
-            );
+            process.stdout.write(CONFIG.CLEAR_LINE);
+            progressCleared = true;
           }
+          outputBuffer += data.toString();
+        });
+      }
 
-          reject(error);
-        }
-      });
+      // 处理子进程错误输出
+      if (child.stderr) {
+        child.stderr.on('data', data => {
+          if (!progressCleared) {
+            process.stdout.write(CONFIG.CLEAR_LINE);
+            progressCleared = true;
+          }
+          process.stderr.write(data);
+        });
+      }
 
-      // 设置中断处理器
+      // 中断处理器
       const interruptHandler = () => {
         if (!isResolved) {
           isResolved = true;
           clearInterval(progressInterval);
 
-          // 清除进度行
           if (!progressCleared) {
-            process.stdout.write(
-              '\r                                                            \r'
-            );
+            process.stdout.write(CONFIG.CLEAR_LINE);
           }
 
-          console.log('\n⚠️  收到中断信号，正在终止...');
-          child.kill('SIGTERM');
-          setTimeout(() => child.kill('SIGKILL'), 2000);
-          process.exit(0);
+          console.log('\n⚠️  收到中断信号，正在终止子进程...');
+          try {
+            child.kill('SIGKILL');
+          } catch (e) {
+            // 忽略错误
+          }
+          resolve({ success: false, interrupted: true });
         }
       };
 
+      // 注册中断处理器
       process.on('SIGINT', interruptHandler);
       process.on('SIGTERM', interruptHandler);
 
-      // 清理处理器
-      child.on('exit', () => {
-        process.removeListener('SIGINT', interruptHandler);
-        process.removeListener('SIGTERM', interruptHandler);
+      // 注册中断处理器
+      process.on('SIGINT', interruptHandler);
+      process.on('SIGTERM', interruptHandler);
+
+      // 子进程退出处理
+      child.on('exit', (code, signal) => {
+        if (!isResolved) {
+          isResolved = true;
+          clearInterval(progressInterval);
+
+          // 清理中断处理器
+          process.removeListener('SIGINT', interruptHandler);
+          process.removeListener('SIGTERM', interruptHandler);
+
+          if (!progressCleared) {
+            process.stdout.write(CONFIG.CLEAR_LINE);
+          }
+
+          const duration = Math.floor((Date.now() - startTime) / 1000);
+
+          if (
+            signal === 'SIGINT' ||
+            signal === 'SIGTERM' ||
+            signal === 'SIGKILL'
+          ) {
+            console.log(`\n⚠️  命令被中断 (耗时 ${duration}s)`);
+            resolve({ success: false, interrupted: true });
+          } else if (code === 0) {
+            console.log(`\n✅ 命令执行成功 (耗时 ${duration}s)`);
+            resolve({ success: true, output: outputBuffer });
+          } else {
+            console.log(
+              `\n❌ 命令执行失败 (耗时 ${duration}s, 退出码: ${code})`
+            );
+            resolve({ success: false, output: outputBuffer, code });
+          }
+        }
+      });
+
+      // 子进程错误处理
+      child.on('error', error => {
+        if (!isResolved) {
+          isResolved = true;
+          clearInterval(progressInterval);
+
+          // 清理中断处理器
+          process.removeListener('SIGINT', interruptHandler);
+          process.removeListener('SIGTERM', interruptHandler);
+
+          if (!progressCleared) {
+            process.stdout.write(CONFIG.CLEAR_LINE);
+          }
+
+          const duration = Math.floor((Date.now() - startTime) / 1000);
+          console.log(
+            `\n❌ 命令执行错误 (耗时 ${duration}s): ${error.message}`
+          );
+          resolve({ success: false, error: error.message });
+        }
       });
     });
   }
@@ -165,70 +223,55 @@ class DependencyManager {
     try {
       // 检查根目录依赖
       console.log('📦 根目录依赖更新:');
-      console.log('   ⏳ 连接 npm 仓库中...');
 
-      const startTime = Date.now();
+      const result = await this.runInterruptibleCommand(
+        'pnpm outdated --depth=0',
+        rootDir,
+        '检查根目录依赖更新'
+      );
 
-      try {
-        const exitCode = await this.runInterruptibleCommand(
-          'pnpm outdated --depth=0',
-          rootDir
-        );
-        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
+      if (result.interrupted) {
+        console.log('⏹️  检查已中断');
+        return;
+      }
 
-        if (exitCode === 0) {
-          console.log(`\n   ✅ 所有依赖都是最新的 (${duration}s)`);
-        } else if (exitCode === 1) {
-          console.log(`\n   📋 发现可更新的依赖 (${duration}s)`);
+      if (result.success) {
+        if (result.code === 0) {
+          console.log('✅ 所有依赖都是最新的');
+        } else if (result.code === 1) {
+          console.log('📋 发现可更新的依赖');
         }
-      } catch (error) {
-        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
-
-        if (error.message === 'INTERRUPTED') {
-          console.log(`\n   ⏹️  已中断 (${duration}s)`);
-          return;
-        } else {
-          console.log(`\n   ⚠️  检查失败 (${duration}s):`, error.message);
-        }
+      } else {
+        console.log('⚠️  检查失败:', result.error || '未知错误');
       }
 
       // 检查各包依赖
       if (this.packages.length > 0) {
-        console.log(`\n📋 发现 ${this.packages.length} 个子包`);
+        console.log(`\n📋 检查 ${this.packages.length} 个子包`);
 
-        let completedPackages = 0;
-        const totalPackages = this.packages.length;
+        for (let i = 0; i < this.packages.length; i++) {
+          const pkg = this.packages[i];
+          console.log(`\n📦 ${pkg.name} [${i + 1}/${this.packages.length}]`);
 
-        for (const pkg of this.packages) {
-          completedPackages++;
-          console.log(
-            `\n📦 ${pkg.name}: [${completedPackages}/${totalPackages}]`
+          const result = await this.runInterruptibleCommand(
+            'pnpm outdated --depth=0',
+            pkg.path,
+            `检查 ${pkg.name} 依赖更新`
           );
-          console.log(`   ⏳ 检查中...`);
 
-          const pkgStartTime = Date.now();
+          if (result.interrupted) {
+            console.log('⏹️  检查已中断');
+            return;
+          }
 
-          try {
-            const exitCode = await this.runInterruptibleCommand(
-              'pnpm outdated --depth=0',
-              pkg.path
-            );
-            const duration = ((Date.now() - pkgStartTime) / 1000).toFixed(1);
-
-            if (exitCode === 0) {
-              console.log(`\n   ✅ 最新 (${duration}s)`);
-            } else if (exitCode === 1) {
-              console.log(`\n   📋 有更新 (${duration}s)`);
+          if (result.success) {
+            if (result.code === 0) {
+              console.log('✅ 所有依赖都是最新的');
+            } else if (result.code === 1) {
+              console.log('📋 发现可更新的依赖');
             }
-          } catch (error) {
-            const duration = ((Date.now() - pkgStartTime) / 1000).toFixed(1);
-
-            if (error.message === 'INTERRUPTED') {
-              console.log(`\n   ⏹️  已中断 (${duration}s)`);
-              return;
-            } else {
-              console.log(`\n   ⚠️  失败 (${duration}s)，跳过`);
-            }
+          } else {
+            console.log('⚠️  检查失败，跳过');
           }
         }
       }
@@ -699,46 +742,79 @@ class DependencyManager {
 const args = process.argv.slice(2);
 const manager = new DependencyManager();
 
-if (args.length === 0) {
-  manager.runAll();
-} else {
-  const command = args[0];
-  switch (command) {
-    case 'updates':
-      manager.checkUpdates();
-      break;
+// 显示帮助信息
+function showHelp() {
+  console.log(`
+${CONFIG.COLORS.CYAN}🚀 IMTP 依赖管理器${CONFIG.COLORS.RESET}
+${CONFIG.COLORS.BLUE}================================${CONFIG.COLORS.RESET}
 
-    case 'conflicts':
-      manager.detectConflicts();
-      break;
-    case 'fix-duplicates':
-      manager.fixDuplicates();
-      break;
-    case 'security':
-      manager.securityScan();
-      break;
-    case 'size':
-      manager.analyzeSize();
-      break;
-    case 'cleanup':
-      manager.cleanupUnused();
-      break;
-    case 'report':
-      manager.generateReport();
-      break;
-    default:
-      console.log(`
 用法: node scripts/dependency-manager.js [command]
 
-命令:
-  updates        检查依赖更新（带进度提示）
-  conflicts      检测版本冲突（本地快速）
-  fix-duplicates 修复重复依赖
-  security       安全漏洞扫描
-  size           包大小分析
-  cleanup        清理未使用依赖
-  report         生成依赖报告
-  (无参数)       运行所有检查
-      `);
+${CONFIG.COLORS.YELLOW}命令:${CONFIG.COLORS.RESET}
+  ${CONFIG.COLORS.GREEN}updates${CONFIG.COLORS.RESET}        检查依赖更新（带进度提示）
+  ${CONFIG.COLORS.GREEN}conflicts${CONFIG.COLORS.RESET}      检测版本冲突（本地快速）
+  ${CONFIG.COLORS.GREEN}fix-duplicates${CONFIG.COLORS.RESET} 修复重复依赖
+  ${CONFIG.COLORS.GREEN}security${CONFIG.COLORS.RESET}       安全漏洞扫描
+  ${CONFIG.COLORS.GREEN}size${CONFIG.COLORS.RESET}           包大小分析
+  ${CONFIG.COLORS.GREEN}cleanup${CONFIG.COLORS.RESET}        清理未使用依赖
+  ${CONFIG.COLORS.GREEN}report${CONFIG.COLORS.RESET}         生成依赖报告
+  ${CONFIG.COLORS.GREEN}help${CONFIG.COLORS.RESET}           显示此帮助信息
+  ${CONFIG.COLORS.GREEN}(无参数)${CONFIG.COLORS.RESET}       运行所有检查
+
+${CONFIG.COLORS.YELLOW}示例:${CONFIG.COLORS.RESET}
+  node scripts/dependency-manager.js updates
+  node scripts/dependency-manager.js security
+  node scripts/dependency-manager.js
+`);
+}
+
+// 处理命令
+async function runCommand() {
+  if (args.length === 0) {
+    await manager.runAll();
+  } else {
+    const command = args[0];
+    switch (command) {
+      case 'updates':
+        await manager.checkUpdates();
+        break;
+      case 'conflicts':
+        manager.detectConflicts();
+        break;
+      case 'fix-duplicates':
+        await manager.fixDuplicates();
+        break;
+      case 'security':
+        await manager.securityScan();
+        break;
+      case 'size':
+        await manager.analyzeSize();
+        break;
+      case 'cleanup':
+        await manager.cleanupUnused();
+        break;
+      case 'report':
+        manager.generateReport();
+        break;
+      case 'help':
+      case '--help':
+      case '-h':
+        showHelp();
+        break;
+      default:
+        console.log(
+          `\n${CONFIG.COLORS.RED}❌ 未知命令: ${command}${CONFIG.COLORS.RESET}`
+        );
+        showHelp();
+        process.exit(1);
+    }
   }
 }
+
+// 运行命令
+runCommand().catch(error => {
+  console.error(
+    `\n${CONFIG.COLORS.RED}❌ 执行失败: ${error.message}${CONFIG.COLORS.RESET}`
+  );
+  process.exit(1);
+});

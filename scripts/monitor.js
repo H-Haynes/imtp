@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -15,29 +15,57 @@ const MONITOR_CONFIG = {
   testTimeout: 60000, // 1分钟
   maxPackageSize: 1024 * 1024, // 1MB
   logFile: path.join(ROOT_DIR, 'monitor-logs.json'),
+  reportFile: path.join(ROOT_DIR, 'monitor-report.json'),
+  maxLogEntries: 100,
+  colors: {
+    reset: '\x1b[0m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    red: '\x1b[31m',
+    blue: '\x1b[34m',
+    cyan: '\x1b[36m',
+    magenta: '\x1b[35m',
+  },
 };
 
 // 初始化监控指标
 function initializeMetrics() {
   return {
     timestamp: new Date().toISOString(),
+    version: '2.0.0',
     build: {
       duration: 0,
       success: false,
       packages: [],
+      errors: [],
     },
     test: {
       duration: 0,
       success: false,
       coverage: 0,
+      passed: 0,
+      failed: 0,
+      total: 0,
     },
     security: {
       vulnerabilities: 0,
       auditPassed: false,
+      severity: {
+        low: 0,
+        moderate: 0,
+        high: 0,
+        critical: 0,
+      },
     },
     performance: {
       packageSizes: {},
       buildTime: 0,
+      memoryUsage: 0,
+    },
+    summary: {
+      overall: 'unknown',
+      issues: 0,
+      warnings: 0,
     },
   };
 }
@@ -53,52 +81,223 @@ function logMetric(type, data) {
     data,
   };
 
-  let logs = [];
-  if (fs.existsSync(MONITOR_CONFIG.logFile)) {
-    logs = JSON.parse(fs.readFileSync(MONITOR_CONFIG.logFile, 'utf8'));
+  try {
+    let logs = [];
+    if (fs.existsSync(MONITOR_CONFIG.logFile)) {
+      const content = fs.readFileSync(MONITOR_CONFIG.logFile, 'utf8');
+      if (content.trim()) {
+        logs = JSON.parse(content);
+      }
+    }
+
+    logs.push(logEntry);
+
+    // 只保留最近记录
+    if (logs.length > MONITOR_CONFIG.maxLogEntries) {
+      logs = logs.slice(-MONITOR_CONFIG.maxLogEntries);
+    }
+
+    fs.writeFileSync(MONITOR_CONFIG.logFile, JSON.stringify(logs, null, 2));
+  } catch (error) {
+    console.warn(`⚠️  日志记录失败: ${error.message}`);
   }
+}
 
-  logs.push(logEntry);
+// 可中断的命令执行函数
+function runInterruptibleCommand(
+  command,
+  cwd,
+  description = '执行命令',
+  timeout = 300000
+) {
+  return new Promise(resolve => {
+    let isResolved = false;
+    const startTime = Date.now();
+    let progressCleared = false;
 
-  // 只保留最近100条记录
-  if (logs.length > 100) {
-    logs = logs.slice(-100);
-  }
+    console.log(`🚀 ${description}: ${command}`);
 
-  fs.writeFileSync(MONITOR_CONFIG.logFile, JSON.stringify(logs, null, 2));
+    // 显示进度
+    const progressInterval = setInterval(() => {
+      if (!progressCleared && !isResolved) {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        process.stdout.write(`\r🔄 正在执行 (已用时 ${elapsed}s)...`);
+      }
+    }, 1000);
+
+    // 启动子进程
+    const child = spawn(command.split(' ')[0], command.split(' ').slice(1), {
+      cwd: cwd,
+      stdio: ['inherit', 'pipe', 'inherit'],
+      detached: false,
+      env: { ...process.env, FORCE_COLOR: '1' },
+    });
+
+    let outputBuffer = '';
+
+    // 处理子进程输出
+    if (child.stdout) {
+      child.stdout.on('data', data => {
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+          progressCleared = true;
+        }
+        outputBuffer += data.toString();
+      });
+    }
+
+    // 中断处理器
+    const interruptHandler = () => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+        }
+
+        console.log('\n⚠️  收到中断信号，正在终止子进程...');
+        try {
+          child.kill('SIGKILL');
+        } catch (e) {
+          // 忽略错误
+        }
+        resolve({ success: false, interrupted: true });
+      }
+    };
+
+    // 注册中断处理器
+    process.on('SIGINT', interruptHandler);
+    process.on('SIGTERM', interruptHandler);
+
+    // 超时处理
+    const timeoutId = setTimeout(() => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+        console.log(`\n⏰ 命令执行超时 (${timeout / 1000}s)`);
+        try {
+          child.kill('SIGKILL');
+        } catch (e) {
+          // 忽略错误
+        }
+        resolve({ success: false, timeout: true });
+      }
+    }, timeout);
+
+    // 子进程退出处理
+    child.on('exit', (code, signal) => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+        clearTimeout(timeoutId);
+
+        // 清理中断处理器
+        process.removeListener('SIGINT', interruptHandler);
+        process.removeListener('SIGTERM', interruptHandler);
+
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+        }
+
+        const duration = Math.floor((Date.now() - startTime) / 1000);
+
+        if (
+          signal === 'SIGINT' ||
+          signal === 'SIGTERM' ||
+          signal === 'SIGKILL'
+        ) {
+          console.log(`\n⚠️  命令被中断 (耗时 ${duration}s)`);
+          resolve({ success: false, interrupted: true });
+        } else if (code === 0) {
+          console.log(`\n✅ 命令执行成功 (耗时 ${duration}s)`);
+          resolve({ success: true, output: outputBuffer });
+        } else {
+          console.log(`\n❌ 命令执行失败 (耗时 ${duration}s, 退出码: ${code})`);
+          resolve({ success: false, output: outputBuffer, code });
+        }
+      }
+    });
+
+    // 子进程错误处理
+    child.on('error', error => {
+      if (!isResolved) {
+        isResolved = true;
+        clearInterval(progressInterval);
+        clearTimeout(timeoutId);
+
+        // 清理中断处理器
+        process.removeListener('SIGINT', interruptHandler);
+        process.removeListener('SIGTERM', interruptHandler);
+
+        if (!progressCleared) {
+          process.stdout.write(
+            '\r                                                            \r'
+          );
+        }
+
+        const duration = Math.floor((Date.now() - startTime) / 1000);
+        console.log(`\n❌ 命令执行错误 (耗时 ${duration}s): ${error.message}`);
+        resolve({ success: false, error: error.message });
+      }
+    });
+  });
 }
 
 // 监控构建性能
-function monitorBuild() {
-  console.log('🔨 监控构建性能...');
+async function monitorBuild() {
+  console.log(
+    `${MONITOR_CONFIG.colors.cyan}🔨 监控构建性能...${MONITOR_CONFIG.colors.reset}`
+  );
 
-  const startTime = Date.now();
+  const result = await runInterruptibleCommand(
+    'pnpm build',
+    ROOT_DIR,
+    '构建项目',
+    MONITOR_CONFIG.buildTimeout
+  );
 
-  try {
-    execSync('pnpm build', {
-      cwd: ROOT_DIR,
-      stdio: 'pipe',
-      timeout: MONITOR_CONFIG.buildTimeout,
-    });
+  if (result.interrupted) {
+    console.log(
+      `${MONITOR_CONFIG.colors.yellow}⏹️  构建监控已中断${MONITOR_CONFIG.colors.reset}`
+    );
+    return false;
+  }
 
-    const duration = Date.now() - startTime;
-    metrics.build.duration = duration;
+  if (result.timeout) {
+    console.log(
+      `${MONITOR_CONFIG.colors.red}⏰ 构建超时${MONITOR_CONFIG.colors.reset}`
+    );
+    metrics.build.success = false;
+    metrics.build.errors.push('构建超时');
+    logMetric('build', { success: false, error: 'timeout' });
+    return false;
+  }
+
+  if (result.success) {
+    console.log(
+      `${MONITOR_CONFIG.colors.green}✅ 构建成功${MONITOR_CONFIG.colors.reset}`
+    );
     metrics.build.success = true;
-    metrics.performance.buildTime = duration;
-
-    console.log(`✅ 构建成功，耗时: ${duration}ms`);
-    logMetric('build', { success: true, duration });
+    logMetric('build', { success: true });
 
     // 分析包大小
-    analyzePackageSizes();
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    metrics.build.duration = duration;
+    await analyzePackageSizes();
+    return true;
+  } else {
+    console.log(
+      `${MONITOR_CONFIG.colors.red}❌ 构建失败${MONITOR_CONFIG.colors.reset}`
+    );
     metrics.build.success = false;
-
-    console.error(`❌ 构建失败，耗时: ${duration}ms`);
-    console.error(error.message);
-    logMetric('build', { success: false, duration, error: error.message });
+    metrics.build.errors.push(result.error || '构建失败');
+    logMetric('build', { success: false, error: result.error });
+    return false;
   }
 }
 
@@ -160,47 +359,72 @@ function formatBytes(bytes) {
 }
 
 // 监控测试
-function monitorTests() {
-  console.log('🧪 监控测试...');
+async function monitorTests() {
+  console.log(
+    `${MONITOR_CONFIG.colors.cyan}🧪 监控测试...${MONITOR_CONFIG.colors.reset}`
+  );
 
-  const startTime = Date.now();
+  const result = await runInterruptibleCommand(
+    'pnpm test:coverage',
+    ROOT_DIR,
+    '运行测试',
+    MONITOR_CONFIG.testTimeout
+  );
 
-  try {
-    const output = execSync('pnpm test:coverage', {
-      cwd: ROOT_DIR,
-      stdio: 'pipe',
-      timeout: MONITOR_CONFIG.testTimeout,
-      encoding: 'utf8',
-    });
+  if (result.interrupted) {
+    console.log(
+      `${MONITOR_CONFIG.colors.yellow}⏹️  测试监控已中断${MONITOR_CONFIG.colors.reset}`
+    );
+    return false;
+  }
 
-    const duration = Date.now() - startTime;
-    metrics.test.duration = duration;
+  if (result.timeout) {
+    console.log(
+      `${MONITOR_CONFIG.colors.red}⏰ 测试超时${MONITOR_CONFIG.colors.reset}`
+    );
+    metrics.test.success = false;
+    logMetric('test', { success: false, error: 'timeout' });
+    return false;
+  }
+
+  if (result.success) {
+    console.log(
+      `${MONITOR_CONFIG.colors.green}✅ 测试成功${MONITOR_CONFIG.colors.reset}`
+    );
     metrics.test.success = true;
 
     // 提取覆盖率信息
-    const coverageMatch = output.match(/All files\s+\|\s+(\d+\.\d+)/);
+    const coverageMatch = result.output.match(/All files\s+\|\s+(\d+\.\d+)/);
     if (coverageMatch) {
       metrics.test.coverage = parseFloat(coverageMatch[1]);
+      console.log(
+        `${MONITOR_CONFIG.colors.blue}📊 覆盖率: ${metrics.test.coverage}%${MONITOR_CONFIG.colors.reset}`
+      );
     }
 
-    console.log(`✅ 测试成功，耗时: ${duration}ms`);
-    if (metrics.test.coverage > 0) {
-      console.log(`📊 覆盖率: ${metrics.test.coverage}%`);
+    // 提取测试统计信息
+    const testMatch = result.output.match(/(\d+) passing|(\d+) failed/);
+    if (testMatch) {
+      metrics.test.passed = parseInt(testMatch[1]) || 0;
+      metrics.test.failed = parseInt(testMatch[2]) || 0;
+      metrics.test.total = metrics.test.passed + metrics.test.failed;
     }
 
     logMetric('test', {
       success: true,
-      duration,
       coverage: metrics.test.coverage,
+      passed: metrics.test.passed,
+      failed: metrics.test.failed,
+      total: metrics.test.total,
     });
-  } catch (error) {
-    const duration = Date.now() - startTime;
-    metrics.test.duration = duration;
+    return true;
+  } else {
+    console.log(
+      `${MONITOR_CONFIG.colors.red}❌ 测试失败${MONITOR_CONFIG.colors.reset}`
+    );
     metrics.test.success = false;
-
-    console.error(`❌ 测试失败，耗时: ${duration}ms`);
-    console.error(error.message);
-    logMetric('test', { success: false, duration, error: error.message });
+    logMetric('test', { success: false, error: result.error });
+    return false;
   }
 }
 
@@ -333,49 +557,95 @@ function generateReport() {
   return report;
 }
 
+// 显示帮助信息
+function showHelp() {
+  console.log(`
+${MONITOR_CONFIG.colors.cyan}📊 IMTP 监控工具${MONITOR_CONFIG.colors.reset}
+${MONITOR_CONFIG.colors.blue}========================${MONITOR_CONFIG.colors.reset}
+
+用法: node scripts/monitor.js [command]
+
+${MONITOR_CONFIG.colors.yellow}命令:${MONITOR_CONFIG.colors.reset}
+  ${MONITOR_CONFIG.colors.green}build${MONITOR_CONFIG.colors.reset}     监控构建性能
+  ${MONITOR_CONFIG.colors.green}test${MONITOR_CONFIG.colors.reset}      监控测试结果
+  ${MONITOR_CONFIG.colors.green}security${MONITOR_CONFIG.colors.reset}  监控安全状态
+  ${MONITOR_CONFIG.colors.green}all${MONITOR_CONFIG.colors.reset}       全面监控
+  ${MONITOR_CONFIG.colors.green}report${MONITOR_CONFIG.colors.reset}    生成监控报告
+  ${MONITOR_CONFIG.colors.green}help${MONITOR_CONFIG.colors.reset}      显示此帮助信息
+  ${MONITOR_CONFIG.colors.green}(无参数)${MONITOR_CONFIG.colors.reset}  运行全面监控
+
+${MONITOR_CONFIG.colors.yellow}示例:${MONITOR_CONFIG.colors.reset}
+  node scripts/monitor.js build
+  node scripts/monitor.js test
+  node scripts/monitor.js all
+`);
+}
+
 // 主函数
-function main() {
+async function main() {
   const command = process.argv[2];
 
   try {
     switch (command) {
       case 'build':
-        monitorBuild();
+        await monitorBuild();
         break;
 
       case 'test':
-        monitorTests();
+        await monitorTests();
         break;
 
       case 'security':
-        monitorSecurity();
+        await monitorSecurity();
         break;
 
       case 'all':
-        console.log('🚀 开始全面监控...');
-        monitorBuild();
-        monitorTests();
-        monitorSecurity();
+        console.log(
+          `${MONITOR_CONFIG.colors.cyan}🚀 开始全面监控...${MONITOR_CONFIG.colors.reset}`
+        );
+        await monitorBuild();
+        await monitorTests();
+        await monitorSecurity();
         generateReport();
-        console.log('✅ 监控完成');
+        console.log(
+          `${MONITOR_CONFIG.colors.green}✅ 监控完成${MONITOR_CONFIG.colors.reset}`
+        );
         break;
 
       case 'report':
         generateReport();
         break;
 
+      case 'help':
+      case '--help':
+      case '-h':
+        showHelp();
+        break;
+
+      case undefined:
+        console.log(
+          `${MONITOR_CONFIG.colors.cyan}🚀 开始全面监控...${MONITOR_CONFIG.colors.reset}`
+        );
+        await monitorBuild();
+        await monitorTests();
+        await monitorSecurity();
+        generateReport();
+        console.log(
+          `${MONITOR_CONFIG.colors.green}✅ 监控完成${MONITOR_CONFIG.colors.reset}`
+        );
+        break;
+
       default:
-        console.log('📊 监控工具');
-        console.log('');
-        console.log('用法:');
-        console.log('  node scripts/monitor.js build     - 监控构建');
-        console.log('  node scripts/monitor.js test      - 监控测试');
-        console.log('  node scripts/monitor.js security  - 监控安全');
-        console.log('  node scripts/monitor.js all       - 全面监控');
-        console.log('  node scripts/monitor.js report    - 生成报告');
+        console.log(
+          `\n${MONITOR_CONFIG.colors.red}❌ 未知命令: ${command}${MONITOR_CONFIG.colors.reset}`
+        );
+        showHelp();
+        process.exit(1);
     }
   } catch (error) {
-    console.error('❌ 监控过程中发生错误:', error.message);
+    console.error(
+      `${MONITOR_CONFIG.colors.red}❌ 监控过程中发生错误: ${error.message}${MONITOR_CONFIG.colors.reset}`
+    );
     process.exit(1);
   }
 }
