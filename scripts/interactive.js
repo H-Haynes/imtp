@@ -22,6 +22,7 @@ const MENU_CONFIG = {
       { key: '7', name: '🧪 测试工具', module: 'test' },
       { key: '8', name: '🏗️  构建工具', module: 'build' },
       { key: '9', name: '🔒 安全工具', module: 'security' },
+      { key: '10', name: '🚀 CI/CD 工具', module: 'cicd' },
       { key: '0', name: '❌ 退出' },
     ],
   },
@@ -226,6 +227,37 @@ const MENU_CONFIG = {
       { key: '0', name: '⬅️  返回主菜单' },
     ],
   },
+  cicd: {
+    title: '🚀 CI/CD 工具',
+    options: [
+      {
+        key: '1',
+        name: '🔄 执行完整 CI/CD 流程',
+        command: 'node scripts/ci-cd.js pipeline',
+      },
+      {
+        key: '2',
+        name: '🚀 执行发布流程',
+        command: 'node scripts/ci-cd.js release',
+      },
+      {
+        key: '3',
+        name: '👀 发布预览',
+        command: 'node scripts/ci-cd.js release:dry',
+      },
+      {
+        key: '4',
+        name: '🔍 分析提交历史',
+        command: 'node scripts/ci-cd.js analyze',
+      },
+      {
+        key: '5',
+        name: '📋 查看 CI/CD 帮助',
+        command: 'node scripts/ci-cd.js help',
+      },
+      { key: '0', name: '⬅️  返回主菜单' },
+    ],
+  },
 };
 
 class InteractiveScripts {
@@ -378,6 +410,8 @@ class InteractiveScripts {
         stdio: ['inherit', 'pipe', 'pipe'],
         env: { ...process.env, FORCE_COLOR: '1' },
         detached: false,
+        // 确保子进程能接收到中断信号
+        shell: false,
       });
 
       let isInterrupted = false;
@@ -388,72 +422,90 @@ class InteractiveScripts {
 
       // 处理标准输出
       child.stdout.on('data', data => {
-        const lines = data.toString().split('\n');
-        lines.forEach(line => {
-          if (line.trim()) {
-            // 检查是否是检查相关的输出
-            if (
-              line.includes('🔍') ||
-              line.includes('📦') ||
-              line.includes('检查')
-            ) {
-              // 替换为眼睛图标
-              const modifiedLine = line.replace(/🔍|📦/, '👁️');
-              console.log(modifiedLine);
-              outputLines.push(modifiedLine);
-              checkLines.push(modifiedLine); // 记录检查行
-              checkInProgress = true; // 标记正在检查中
-            } else if (line.includes('✅') || line.includes('❌')) {
-              // 如果有正在进行的检查，覆盖掉检查行
-              if (checkInProgress) {
-                // 清除上一行（检查中的行）
-                process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
-                checkInProgress = false;
+        const output = data.toString();
+
+        // 检查是否是进度显示行（包含"正在执行"）
+        if (output.includes('正在执行')) {
+          // 直接输出进度，不换行
+          process.stdout.write(output);
+        } else {
+          // 处理其他输出
+          const lines = output.split('\n');
+          lines.forEach(line => {
+            if (line.trim()) {
+              // 检查是否是检查相关的输出
+              if (
+                line.includes('🔍') ||
+                line.includes('📦') ||
+                line.includes('检查')
+              ) {
+                // 替换为眼睛图标
+                const modifiedLine = line.replace(/🔍|📦/, '👁️');
+                console.log(modifiedLine);
+                outputLines.push(modifiedLine);
+                checkLines.push(modifiedLine); // 记录检查行
+                checkInProgress = true; // 标记正在检查中
+              } else if (line.includes('✅') || line.includes('❌')) {
+                // 如果有正在进行的检查，覆盖掉检查行
+                if (checkInProgress) {
+                  // 清除上一行（检查中的行）
+                  process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
+                  checkInProgress = false;
+                }
+                console.log(line);
+                outputLines.push(line);
+                checkLines.push(line); // 记录检查结果
+              } else {
+                console.log(line);
+                outputLines.push(line);
               }
-              console.log(line);
-              outputLines.push(line);
-              checkLines.push(line); // 记录检查结果
-            } else {
-              console.log(line);
-              outputLines.push(line);
             }
-          }
-        });
+          });
+        }
       });
 
       // 处理标准错误
       child.stderr.on('data', data => {
-        const lines = data.toString().split('\n');
-        lines.forEach(line => {
-          if (line.trim()) {
-            // 检查是否是检查相关的输出
-            if (
-              line.includes('🔍') ||
-              line.includes('📦') ||
-              line.includes('检查')
-            ) {
-              // 替换为眼睛图标
-              const modifiedLine = line.replace(/🔍|📦/, '👁️');
-              console.log(modifiedLine);
-              outputLines.push(modifiedLine);
-              checkLines.push(modifiedLine); // 记录检查行
-              checkInProgress = true; // 标记正在检查中
-            } else if (line.includes('✅') || line.includes('❌')) {
-              // 如果有正在进行的检查，覆盖掉检查行
-              if (checkInProgress) {
-                // 清除上一行（检查中的行）
-                process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
-                checkInProgress = false;
+        const output = data.toString();
+
+        // 检查是否是进度显示行（包含"正在执行"）
+        if (output.includes('正在执行')) {
+          // 直接输出进度，不换行
+          process.stdout.write(output);
+        } else {
+          // 处理其他输出
+          const lines = output.split('\n');
+          lines.forEach(line => {
+            if (line.trim()) {
+              // 检查是否是检查相关的输出
+              if (
+                line.includes('🔍') ||
+                line.includes('📦') ||
+                line.includes('检查')
+              ) {
+                // 替换为眼睛图标
+                const modifiedLine = line.replace(/🔍|📦/, '👁️');
+                console.log(modifiedLine);
+                outputLines.push(modifiedLine);
+                checkLines.push(modifiedLine); // 记录检查行
+                checkInProgress = true; // 标记正在检查中
+              } else if (line.includes('✅') || line.includes('❌')) {
+                // 如果有正在进行的检查，覆盖掉检查行
+                if (checkInProgress) {
+                  // 清除上一行（检查中的行）
+                  process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
+                  checkInProgress = false;
+                }
+                console.log(line);
+                outputLines.push(line);
+                checkLines.push(line); // 记录检查结果
+              } else {
+                console.log(line);
+                outputLines.push(line);
               }
-              console.log(line);
-              outputLines.push(line);
-              checkLines.push(line); // 记录检查结果
-            } else {
-              console.log(line);
-              outputLines.push(line);
             }
-          }
-        });
+          });
+        }
       });
 
       const interruptHandler = () => {
@@ -461,13 +513,24 @@ class InteractiveScripts {
           isInterrupted = true;
           console.log('\n⚠️  收到中断信号，正在终止子进程...');
           try {
-            child.kill('SIGKILL');
+            // 先尝试优雅终止
+            child.kill('SIGTERM');
+
+            // 如果3秒后还在运行，强制终止
+            setTimeout(() => {
+              try {
+                child.kill('SIGKILL');
+              } catch (e) {
+                // 忽略错误
+              }
+            }, 3000);
           } catch (e) {
             // 忽略错误
           }
         }
       };
 
+      // 注册中断处理器
       process.on('SIGINT', interruptHandler);
       process.on('SIGTERM', interruptHandler);
 

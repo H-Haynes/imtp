@@ -98,9 +98,7 @@ class DependencyManager {
       const progressInterval = setInterval(() => {
         if (!progressCleared && !isResolved) {
           const elapsed = Math.floor((Date.now() - startTime) / 1000);
-          process.stdout.write(
-            `${CONFIG.CLEAR_LINE}👁️  正在执行 (已用时 ${elapsed}s)...`
-          );
+          process.stdout.write(`\r👁️  正在执行 (已用时 ${elapsed}s)...`);
         }
       }, CONFIG.PROGRESS_INTERVAL);
 
@@ -118,7 +116,7 @@ class DependencyManager {
       if (child.stdout) {
         child.stdout.on('data', data => {
           if (!progressCleared) {
-            process.stdout.write(CONFIG.CLEAR_LINE);
+            process.stdout.write('\r' + ' '.repeat(50) + '\r');
             progressCleared = true;
           }
           outputBuffer += data.toString();
@@ -129,7 +127,7 @@ class DependencyManager {
       if (child.stderr) {
         child.stderr.on('data', data => {
           if (!progressCleared) {
-            process.stdout.write(CONFIG.CLEAR_LINE);
+            process.stdout.write('\r' + ' '.repeat(50) + '\r');
             progressCleared = true;
           }
           process.stderr.write(data);
@@ -143,7 +141,7 @@ class DependencyManager {
           clearInterval(progressInterval);
 
           if (!progressCleared) {
-            process.stdout.write(CONFIG.CLEAR_LINE);
+            process.stdout.write('\r' + ' '.repeat(50) + '\r');
           }
 
           console.log('\n⚠️  收到中断信号，正在终止子进程...');
@@ -160,10 +158,6 @@ class DependencyManager {
       process.on('SIGINT', interruptHandler);
       process.on('SIGTERM', interruptHandler);
 
-      // 注册中断处理器
-      process.on('SIGINT', interruptHandler);
-      process.on('SIGTERM', interruptHandler);
-
       // 子进程退出处理
       child.on('exit', (code, signal) => {
         if (!isResolved) {
@@ -175,7 +169,7 @@ class DependencyManager {
           process.removeListener('SIGTERM', interruptHandler);
 
           if (!progressCleared) {
-            process.stdout.write(CONFIG.CLEAR_LINE);
+            process.stdout.write('\r' + ' '.repeat(50) + '\r');
           }
 
           const duration = Math.floor((Date.now() - startTime) / 1000);
@@ -210,7 +204,7 @@ class DependencyManager {
           process.removeListener('SIGTERM', interruptHandler);
 
           if (!progressCleared) {
-            process.stdout.write(CONFIG.CLEAR_LINE);
+            process.stdout.write('\r' + ' '.repeat(50) + '\r');
           }
 
           const duration = Math.floor((Date.now() - startTime) / 1000);
@@ -270,9 +264,7 @@ class DependencyManager {
           );
 
           // 清除检查中的提示
-          process.stdout.write(
-            '\r                                                            \r'
-          );
+          process.stdout.write('\r' + ' '.repeat(50) + '\r');
 
           if (result.interrupted) {
             console.log('⏹️  检查已中断');

@@ -1,331 +1,302 @@
-# CI/CD 使用指南
+# 🚀 CI/CD 自动化部署指南
 
 ## 📋 概述
 
-本项目实现了完整的 CI/CD 流程，包括自动化构建、测试、部署和监控。
+本项目已配置完整的 CI/CD 自动化部署流程，包括代码质量检查、测试、构建、安全扫描和自动化发布。
 
-## 🚀 工作流程
+## 🔧 功能特性
 
-### 1. 主要 CI/CD 流程 (`.github/workflows/ci.yml`)
+### ✅ 已实现功能
 
-**触发条件：**
+1. **自动化测试**
+   - 代码质量检查 (ESLint)
+   - 类型检查 (TypeScript)
+   - 单元测试 (Vitest)
+   - 测试覆盖率报告
 
-- 推送到 `main` 或 `develop` 分支
-- 创建 Pull Request 到 `main` 或 `develop` 分支
+2. **自动化构建**
+   - 多包构建 (Monorepo)
+   - 最小化构建
+   - 文档构建
+   - 构建产物上传
 
-**执行步骤：**
+3. **安全扫描**
+   - 依赖安全扫描
+   - 代码安全分析 (CodeQL)
+   - 漏洞检测
 
-1. **环境验证** - 验证环境配置文件
-2. **代码质量检查** - Lint、格式化、类型检查
-3. **类型生成** - 生成和验证 TypeScript 类型
-4. **测试** - 多版本 Node.js 测试
-5. **构建** - 构建所有包
-6. **安全扫描** - 依赖安全审计
-7. **文档生成** - 生成 API 文档
-8. **发布** - 自动发布到 npm (仅 main 分支)
-9. **部署文档** - 部署到 GitHub Pages (仅 main 分支)
-10. **通知** - 发送部署结果通知
+4. **自动化发布**
+   - 语义化版本控制
+   - 自动生成变更日志
+   - GitHub Release
+   - NPM 发布
 
-### 2. 快速部署流程 (`.github/workflows/deploy.yml`)
+5. **文档部署**
+   - 自动部署到 GitHub Pages
+   - 文档站点更新
 
-**触发条件：**
+## 🛠️ 使用方法
 
-- 手动触发 (workflow_dispatch)
+### 本地执行
 
-**功能：**
-
-- 支持选择部署环境 (staging/production)
-- 支持指定部署包
-- 包含预部署检查和后验证
-
-## 🔧 环境管理 ✅ 已实现
-
-### 环境配置文件
-
-项目支持多环境配置：
-
-- `.env.development` - 开发环境
-- `.env.test` - 测试环境
-- `.env.production` - 生产环境
-
-### 环境管理命令
+#### 1. 完整 CI/CD 流程
 
 ```bash
 # 使用交互式工具
 pnpm interactive
-# 选择环境管理
+# 选择 CI/CD 工具 -> 执行完整 CI/CD 流程
 
 # 或者直接使用命令
-pnpm env:validate [environment]
-pnpm env:check
-pnpm env:create <environment>
-pnpm env:list
+node scripts/ci-cd.js pipeline
 ```
 
-### 环境变量要求
-
-**开发环境必需变量：**
-
-- `NODE_ENV`
-- `DEBUG`
-
-**测试环境必需变量：**
-
-- `NODE_ENV`
-
-**生产环境必需变量：**
-
-- `NODE_ENV`
-- `API_URL`
-
-## 🔄 回滚机制 ✅ 已实现
-
-### 自动回滚
-
-当发布失败时，CI/CD 会自动执行回滚操作：
-
-1. 备份当前版本信息
-2. 回滚 Git 到上一个提交
-3. 恢复包版本号
-4. 重新安装依赖和构建
-
-### 手动回滚
+#### 2. 发布流程
 
 ```bash
-# 使用交互式工具
-pnpm interactive
-# 选择备份管理
+# 发布预览
+node scripts/ci-cd.js release:dry
 
-# 或者直接使用命令
-node scripts/rollback.js create
-node scripts/rollback.js list
-node scripts/rollback.js rollback <backup-name>
-node scripts/rollback.js cleanup
+# 正式发布
+node scripts/ci-cd.js release
 ```
 
-## 🔒 安全扫描 ✅ 已实现
-
-### 自动安全检查
-
-CI/CD 包含以下安全检查：
-
-1. **依赖审计** - 检查 npm 包漏洞
-2. **代码扫描** - 检查代码中的敏感信息
-3. **Snyk 扫描** - 第三方安全扫描
-
-### 手动安全检查
+#### 3. 分析提交历史
 
 ```bash
-# 使用交互式工具
-pnpm interactive
-# 选择安全工具
-
-# 或者直接使用命令
-node scripts/dependency-manager.js security
-node scripts/monitor.js security
+node scripts/ci-cd.js analyze
 ```
 
-## 📊 性能监控 ✅ 已实现
+### GitHub Actions
 
-### 构建性能监控
+当您推送代码到 `main` 分支时，会自动触发以下流程：
 
-CI/CD 会监控：
+1. **测试阶段** - 代码检查、类型检查、测试
+2. **构建阶段** - 项目构建、文档构建
+3. **安全阶段** - 安全扫描、漏洞检测
+4. **发布阶段** - 语义化发布、生成 Release
+5. **部署阶段** - 文档部署到 GitHub Pages
 
-- 构建时间
-- 包大小
-- 构建成功率
+## 📝 提交规范
 
-### 手动性能检查
+项目使用 [Conventional Commits](https://www.conventionalcommits.org/) 规范：
+
+### 提交类型
+
+- `feat`: 新功能
+- `fix`: 修复 bug
+- `docs`: 文档更新
+- `style`: 代码格式调整
+- `refactor`: 代码重构
+- `perf`: 性能优化
+- `test`: 测试相关
+- `build`: 构建相关
+- `ci`: CI/CD 相关
+- `chore`: 其他杂项
+
+### 提交示例
 
 ```bash
-# 使用交互式工具
-pnpm interactive
-# 选择监控管理
+# 新功能
+git commit -m "feat: 添加用户认证功能"
 
-# 或者直接使用命令
-node scripts/monitor.js build
-node scripts/monitor.js test
-node scripts/monitor.js security
-node scripts/monitor.js all
-node scripts/monitor.js report
+# 修复 bug
+git commit -m "fix: 修复登录页面样式问题"
+
+# 文档更新
+git commit -m "docs: 更新 API 文档"
+
+# 重大变更
+git commit -m "feat!: 重构用户系统 API
+
+BREAKING CHANGE: 用户 API 接口已更改，需要更新客户端代码"
 ```
 
-## 🔔 通知机制
+## 🔐 环境配置
 
-### 通知渠道
+### GitHub Secrets
 
-当前支持的通知方式：
+需要在 GitHub 仓库中配置以下 Secrets：
 
-- GitHub Actions 日志
-- 可扩展为 Slack、Discord、邮件等
+1. **NPM_TOKEN** - NPM 发布令牌
 
-### 通知内容
+   ```bash
+   # 生成 NPM 令牌
+   npm token create --read-only
+   ```
 
-**成功通知：**
+2. **GITHUB_TOKEN** - GitHub 令牌 (自动提供)
 
-- 项目名称
-- 分支信息
-- 提交哈希
-- 部署时间
-
-**失败通知：**
-
-- 失败原因
-- 失败作业
-- 回滚状态
-
-## 🛠️ 本地开发
-
-### 环境设置
-
-1. 复制环境配置：
+### 本地环境
 
 ```bash
-cp env.example .env.development
+# 设置 NPM 认证
+npm login
+
+# 配置 Git 用户信息
+git config user.name "Your Name"
+git config user.email "your.email@example.com"
 ```
 
-2. 修改环境变量：
+## 📊 监控和报告
 
-```bash
-# 编辑 .env.development 文件
-vim .env.development
-```
+### 执行状态
 
-3. 验证环境配置：
+- ✅ **成功** - 所有检查通过
+- ⚠️ **警告** - 部分检查失败，但不影响发布
+- ❌ **失败** - 关键检查失败，阻止发布
 
-```bash
-pnpm env:validate development
-```
+### 报告内容
 
-### 本地测试
-
-```bash
-# 使用交互式工具
-pnpm interactive
-# 选择测试工具
-
-# 或者直接使用命令
-pnpm test
-pnpm test:coverage
-pnpm lint
-pnpm type-check
-```
-
-### 本地构建
-
-```bash
-# 使用交互式工具
-pnpm interactive
-# 选择构建工具
-
-# 或者直接使用命令
-pnpm build
-pnpm build:min
-pnpm clean
-```
-
-## 📈 最佳实践
-
-### 1. 提交规范
-
-使用语义化提交信息：
-
-```
-feat: 添加新功能
-fix: 修复 bug
-docs: 更新文档
-style: 代码格式化
-refactor: 代码重构
-test: 添加测试
-chore: 构建过程或辅助工具的变动
-```
-
-### 2. 分支策略
-
-- `main` - 生产环境分支
-- `develop` - 开发环境分支
-- `feature/*` - 功能分支
-- `hotfix/*` - 热修复分支
-
-### 3. 版本管理
-
-使用 Changesets 进行版本管理：
-
-```bash
-# 创建变更集
-pnpm changeset
-
-# 更新版本
-pnpm version-packages
-
-# 发布
-pnpm release
-```
-
-### 4. 监控指标
-
-定期检查以下指标：
-
-- 构建成功率
 - 测试覆盖率
-- 安全漏洞数量
-- 构建时间趋势
-- 包大小变化
+- 构建时间
+- 安全扫描结果
+- 发布状态
+- 部署状态
 
 ## 🚨 故障排除
 
 ### 常见问题
 
-1. **构建失败**
-   - 检查依赖是否正确安装
-   - 验证环境变量配置
-   - 查看构建日志
+1. **提交被拒绝**
+   - 检查提交消息格式
+   - 确保代码通过所有检查
 
-2. **测试失败**
-   - 检查测试环境配置
-   - 验证测试数据
-   - 查看测试覆盖率
+2. **构建失败**
+   - 检查依赖安装
+   - 查看构建日志
+   - 验证配置文件
 
 3. **发布失败**
-   - 检查 npm token 配置
-   - 验证包版本号
-   - 查看发布日志
+   - 检查 NPM 认证
+   - 验证版本号
+   - 确认发布权限
 
-4. **回滚失败**
-   - 检查备份文件
-   - 验证 Git 状态
-   - 手动执行回滚
+### 调试命令
 
-### 获取帮助
+```bash
+# 本地测试 CI/CD 流程
+node scripts/ci-cd.js pipeline
 
-- 查看 GitHub Actions 日志
-- 检查监控报告
-- 查看项目文档
-- 联系项目维护者
+# 发布预览
+node scripts/ci-cd.js release:dry
 
-## 📚 相关文档
+# 分析提交
+node scripts/ci-cd.js analyze
 
-- [项目提升分析](./项目提升分析.md)
-- [项目设置](./项目设置.md)
-- [环境配置](./env.md)
-- [脚本详细说明](./脚本详细说明文档.md)
-- [API 文档](./docs/)
+# 查看帮助
+node scripts/ci-cd.js help
+```
 
-## 🎯 当前状态
+## 📈 性能优化
 
-### ✅ 已实现功能
+### 构建优化
 
-- **环境管理**: 多环境配置和验证
-- **安全扫描**: 依赖漏洞检测和代码安全检查
-- **性能监控**: 构建、测试、安全监控
-- **备份回滚**: 项目备份和版本回滚
-- **交互式管理**: 统一的交互式界面
+- 并行构建多个包
+- 缓存依赖和构建产物
+- 增量构建支持
 
-### 🚧 待实现功能
+### 测试优化
 
-- **自动化部署**: GitHub Actions 工作流
-- **文档部署**: 自动部署到 GitHub Pages
-- **通知系统**: Slack、Discord、邮件通知
-- **高级监控**: 实时监控和告警
+- 并行测试执行
+- 测试结果缓存
+- 覆盖率报告优化
 
-项目已经具备了CI/CD的基础功能，可以在此基础上进一步完善自动化部署流程。
+## 🔄 工作流程
+
+### 开发流程
+
+1. **创建功能分支**
+
+   ```bash
+   git checkout -b feature/new-feature
+   ```
+
+2. **开发代码**
+
+   ```bash
+   # 编写代码
+   # 运行测试
+   pnpm test
+   ```
+
+3. **提交代码**
+
+   ```bash
+   git add .
+   git commit -m "feat: 添加新功能"
+   ```
+
+4. **推送分支**
+
+   ```bash
+   git push origin feature/new-feature
+   ```
+
+5. **创建 Pull Request**
+   - 在 GitHub 上创建 PR
+   - 等待 CI 检查通过
+   - 代码审查
+
+6. **合并到主分支**
+   - 合并 PR 到 main 分支
+   - 自动触发发布流程
+
+### 发布流程
+
+1. **自动触发**
+   - 推送代码到 main 分支
+   - 自动运行 CI/CD 流程
+
+2. **质量检查**
+   - 代码质量检查
+   - 类型检查
+   - 测试执行
+
+3. **安全扫描**
+   - 依赖安全扫描
+   - 代码安全分析
+
+4. **构建打包**
+   - 项目构建
+   - 文档构建
+   - 产物上传
+
+5. **自动发布**
+   - 语义化版本控制
+   - 生成变更日志
+   - 创建 GitHub Release
+   - 发布到 NPM
+
+6. **文档部署**
+   - 部署文档到 GitHub Pages
+   - 更新文档站点
+
+## 🎯 最佳实践
+
+1. **提交规范**
+   - 使用标准的提交类型
+   - 写清晰的提交消息
+   - 及时提交代码
+
+2. **测试覆盖**
+   - 为新功能编写测试
+   - 保持高测试覆盖率
+   - 定期运行测试
+
+3. **安全优先**
+   - 定期更新依赖
+   - 关注安全警告
+   - 及时修复漏洞
+
+4. **文档维护**
+   - 及时更新文档
+   - 保持文档同步
+   - 提供使用示例
+
+## 📞 支持
+
+如果您遇到问题或有建议，请：
+
+1. 查看 GitHub Actions 日志
+2. 检查项目文档
+3. 提交 Issue 或 PR

@@ -1,0 +1,199 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '8.6.2'
+
+jobs:
+  # 测试和代码质量检查
+  test:
+    name: 🧪 测试和代码质量
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 设置 pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 🔧 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔍 代码检查
+        run: pnpm lint
+
+      - name: 📝 类型检查
+        run: pnpm type-check
+
+      - name: 🧪 运行测试
+        run: pnpm test
+
+      - name: 📊 测试覆盖率
+        run: pnpm test:coverage
+
+    # 构建和打包
+  build:
+    name: 🏗️ 构建和打包
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 设置 pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 🔧 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 🏗️ 构建项目
+        run: pnpm build
+
+      - name: 📦 最小化构建
+        run: pnpm build:min
+
+      - name: 📚 构建文档
+        run: pnpm docs:build
+
+    # 安全扫描
+  security:
+    name: 🔒 安全扫描
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 🟢 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 设置 pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 🔧 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 🔍 依赖安全扫描
+        run: pnpm deps:security
+
+    # 语义化发布
+  release:
+    name: 🚀 语义化发布
+    runs-on: ubuntu-latest
+    needs: [test, build, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 设置 pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 🔧 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 🚀 语义化发布
+        run: pnpm release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 部署文档
+  deploy-docs:
+    name: 📚 部署文档
+    runs-on: ubuntu-latest
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🟢 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: 📦 设置 pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 🔧 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 📚 构建文档
+        run: pnpm docs:build
+
+      - name: 🚀 部署到 GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/.vitepress/dist
+
+    # 通知
+  notify:
+    name: 📢 通知
+    runs-on: ubuntu-latest
+    needs: [test, build, security, release, deploy-docs]
+    if: always()
+
+    steps:
+      - name: 📊 生成报告
+        run: |
+          echo "## 🚀 CI/CD 执行报告" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📋 执行状态" >> $GITHUB_STEP_SUMMARY
+          echo "- 测试: ${{ needs.test.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 构建: ${{ needs.build.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 安全扫描: ${{ needs.security.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 发布: ${{ needs.release.result }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 文档部署: ${{ needs.deploy-docs.result }}" >> $GITHUB_STEP_SUMMARY

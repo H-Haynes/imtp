@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-08-10T14:57:32.230Z",
+  "timestamp": "2025-08-11T02:55:13.889Z",
   "summary": {
     "buildSuccess": true,
     "testSuccess": true,
@@ -7,16 +7,15 @@
     "totalVulnerabilities": 0
   },
   "details": {
-    "timestamp": "2025-08-10T14:57:32.224Z",
+    "timestamp": "2025-08-11T02:55:13.886Z",
+    "version": "2.0.0",
     "build": {
-      "duration": 1455,
       "success": true,
       "packages": []
     },
     "test": {
-      "duration": 3431,
       "success": true,
-      "coverage": 72.83
+      "coverage": 66.66
     },
     "security": {
       "vulnerabilities": 0,
@@ -24,7 +23,13 @@
     },
     "performance": {
       "packageSizes": {},
-      "buildTime": 0
+      "buildTime": 0,
+      "memoryUsage": 0
+    },
+    "summary": {
+      "overall": "unknown",
+      "issues": 0,
+      "warnings": 0
     }
   }
 }

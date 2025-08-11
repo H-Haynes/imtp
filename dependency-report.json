@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-08-10T14:54:58.306Z",
+  "timestamp": "2025-08-11T02:56:26.963Z",
   "root": {
     "name": "@imtp/root",
     "dependencies": 5,
@@ -7,17 +7,22 @@
   },
   "packages": [
     {
+      "name": "ui",
+      "dependencies": 2,
+      "devDependencies": 4
+    },
+    {
+      "name": "types",
+      "dependencies": 0,
+      "devDependencies": 1
+    },
+    {
       "name": "core",
       "dependencies": 1,
       "devDependencies": 0
     },
     {
-      "name": "data",
-      "dependencies": 2,
-      "devDependencies": 0
-    },
-    {
-      "name": "example-package",
+      "name": "utils",
       "dependencies": 1,
       "devDependencies": 0
     },
@@ -27,18 +32,13 @@
       "devDependencies": 0
     },
     {
-      "name": "types",
-      "dependencies": 0,
-      "devDependencies": 1
-    },
-    {
-      "name": "ui",
-      "dependencies": 2,
-      "devDependencies": 4
-    },
-    {
-      "name": "utils",
+      "name": "example-package",
       "dependencies": 1,
+      "devDependencies": 0
+    },
+    {
+      "name": "data",
+      "dependencies": 2,
       "devDependencies": 0
     }
   ],

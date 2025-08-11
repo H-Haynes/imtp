@@ -1,5 +1,5 @@
 // 从 Prisma 自动生成的类型
-export interface User {
+export interface DatabaseUser {
   id: string;
   email: string;
   name: string;
