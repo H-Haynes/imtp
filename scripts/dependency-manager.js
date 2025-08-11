@@ -79,20 +79,27 @@ class DependencyManager {
   }
 
   // 可中断的命令执行函数
-  runInterruptibleCommand(command, cwd, description = '执行命令') {
+  runInterruptibleCommand(
+    command,
+    cwd,
+    description = '执行命令',
+    silent = false
+  ) {
     return new Promise((resolve, reject) => {
       let isResolved = false;
       const startTime = Date.now();
       let progressCleared = false;
 
-      console.log(`🚀 ${description}: ${command}`);
+      if (!silent) {
+        console.log(`🚀 ${description}: ${command}`);
+      }
 
       // 显示进度
       const progressInterval = setInterval(() => {
         if (!progressCleared && !isResolved) {
           const elapsed = Math.floor((Date.now() - startTime) / 1000);
           process.stdout.write(
-            `${CONFIG.CLEAR_LINE}🔄 正在执行 (已用时 ${elapsed}s)...`
+            `${CONFIG.CLEAR_LINE}👁️  正在执行 (已用时 ${elapsed}s)...`
           );
         }
       }, CONFIG.PROGRESS_INTERVAL);
@@ -251,12 +258,20 @@ class DependencyManager {
 
         for (let i = 0; i < this.packages.length; i++) {
           const pkg = this.packages[i];
-          console.log(`\n📦 ${pkg.name} [${i + 1}/${this.packages.length}]`);
+
+          // 显示检查中的提示
+          process.stdout.write(`👁️  检查 ${pkg.name}...`);
 
           const result = await this.runInterruptibleCommand(
             'pnpm outdated --depth=0',
             pkg.path,
-            `检查 ${pkg.name} 依赖更新`
+            `检查 ${pkg.name} 依赖更新`,
+            true // 静默模式
+          );
+
+          // 清除检查中的提示
+          process.stdout.write(
+            '\r                                                            \r'
           );
 
           if (result.interrupted) {
@@ -266,12 +281,12 @@ class DependencyManager {
 
           if (result.success) {
             if (result.code === 0) {
-              console.log('✅ 所有依赖都是最新的');
+              console.log(`✅ ${pkg.name} - 通过`);
             } else if (result.code === 1) {
-              console.log('📋 发现可更新的依赖');
+              console.log(`📋 ${pkg.name} - 发现可更新的依赖`);
             }
           } else {
-            console.log('⚠️  检查失败，跳过');
+            console.log(`⚠️  ${pkg.name} - 检查失败，跳过`);
           }
         }
       }

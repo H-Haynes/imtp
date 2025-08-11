@@ -371,14 +371,90 @@ class InteractiveScripts {
     return new Promise(resolve => {
       const startTime = Date.now();
       const [cmd, ...args] = command.split(' ');
+
+      // 创建自定义的 stdio 配置来捕获输出
       const child = spawn(cmd, args, {
         cwd: rootDir,
-        stdio: 'inherit',
+        stdio: ['inherit', 'pipe', 'pipe'],
         env: { ...process.env, FORCE_COLOR: '1' },
         detached: false,
       });
 
       let isInterrupted = false;
+      let outputLines = [];
+      let isFirstOutput = true;
+      let checkLines = []; // 存储检查过程中的输出行
+      let checkInProgress = false; // 标记是否正在检查中
+
+      // 处理标准输出
+      child.stdout.on('data', data => {
+        const lines = data.toString().split('\n');
+        lines.forEach(line => {
+          if (line.trim()) {
+            // 检查是否是检查相关的输出
+            if (
+              line.includes('🔍') ||
+              line.includes('📦') ||
+              line.includes('检查')
+            ) {
+              // 替换为眼睛图标
+              const modifiedLine = line.replace(/🔍|📦/, '👁️');
+              console.log(modifiedLine);
+              outputLines.push(modifiedLine);
+              checkLines.push(modifiedLine); // 记录检查行
+              checkInProgress = true; // 标记正在检查中
+            } else if (line.includes('✅') || line.includes('❌')) {
+              // 如果有正在进行的检查，覆盖掉检查行
+              if (checkInProgress) {
+                // 清除上一行（检查中的行）
+                process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
+                checkInProgress = false;
+              }
+              console.log(line);
+              outputLines.push(line);
+              checkLines.push(line); // 记录检查结果
+            } else {
+              console.log(line);
+              outputLines.push(line);
+            }
+          }
+        });
+      });
+
+      // 处理标准错误
+      child.stderr.on('data', data => {
+        const lines = data.toString().split('\n');
+        lines.forEach(line => {
+          if (line.trim()) {
+            // 检查是否是检查相关的输出
+            if (
+              line.includes('🔍') ||
+              line.includes('📦') ||
+              line.includes('检查')
+            ) {
+              // 替换为眼睛图标
+              const modifiedLine = line.replace(/🔍|📦/, '👁️');
+              console.log(modifiedLine);
+              outputLines.push(modifiedLine);
+              checkLines.push(modifiedLine); // 记录检查行
+              checkInProgress = true; // 标记正在检查中
+            } else if (line.includes('✅') || line.includes('❌')) {
+              // 如果有正在进行的检查，覆盖掉检查行
+              if (checkInProgress) {
+                // 清除上一行（检查中的行）
+                process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
+                checkInProgress = false;
+              }
+              console.log(line);
+              outputLines.push(line);
+              checkLines.push(line); // 记录检查结果
+            } else {
+              console.log(line);
+              outputLines.push(line);
+            }
+          }
+        });
+      });
 
       const interruptHandler = () => {
         if (!isInterrupted) {
@@ -401,20 +477,53 @@ class InteractiveScripts {
 
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
-        if (
+        // 根据命令类型显示不同的完成信息
+        if (code === 0 && !isInterrupted) {
+          // 判断是否是检查类型的命令
+          const isCheckCommand =
+            description.includes('检查') ||
+            description.includes('验证') ||
+            description.includes('类型检查') ||
+            description.includes('代码检查') ||
+            description.includes('安全审计');
+
+          if (isCheckCommand) {
+            // 检查类命令显示检查完成信息
+            console.log('\n✅ 检查完成！');
+            console.log(`⏱️  耗时: ${duration} 秒`);
+
+            // 统计检查结果
+            const successCount = checkLines.filter(line =>
+              line.includes('✅')
+            ).length;
+            const failCount = checkLines.filter(line =>
+              line.includes('❌')
+            ).length;
+            const totalCount = successCount + failCount;
+
+            if (totalCount > 0) {
+              console.log(
+                `📊 检查结果: ${successCount} 项通过, ${failCount} 项失败`
+              );
+            }
+          } else {
+            // 非检查类命令显示执行成功信息
+            console.log('\n✅ 执行成功！');
+            console.log(`⏱️  耗时: ${duration} 秒`);
+          }
+        } else if (
           isInterrupted ||
           signal === 'SIGINT' ||
           signal === 'SIGTERM' ||
           signal === 'SIGKILL'
         ) {
           console.log('\n⚠️  命令被中断');
-        } else if (code === 0) {
-          console.log('\n✅ 执行成功！');
+          console.log(`⏱️  耗时: ${duration} 秒`);
         } else {
           console.log('\n❌ 执行失败！');
           console.log(`退出码: ${code}`);
+          console.log(`⏱️  耗时: ${duration} 秒`);
         }
-        console.log(`⏱️  耗时: ${duration} 秒`);
         resolve();
       });
 

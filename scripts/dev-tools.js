@@ -85,7 +85,7 @@ function runInterruptibleCommand(
     const progressInterval = setInterval(() => {
       if (!progressCleared && !isResolved) {
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        process.stdout.write(`\r🔄 正在执行 (已用时 ${elapsed}s)...`);
+        process.stdout.write(`\r👁️  正在执行 (已用时 ${elapsed}s)...`);
       }
     }, 1000);
 
