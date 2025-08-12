@@ -52,7 +52,8 @@ const MENU_CONFIG = {
       {
         key: '5',
         name: '🧹 清理未使用依赖',
-        command: 'node scripts/dependency-manager.js cleanup',
+        command: 'cleanup',
+        isSpecial: true,
       },
       {
         key: '6',
@@ -431,14 +432,26 @@ class InteractiveScripts {
     console.log(`📝 命令: ${command}`);
     console.log('='.repeat(50));
 
+    // 处理特殊的清理命令
+    if (command === 'cleanup') {
+      await this.executeCleanupCommand();
+      return;
+    }
+
     return new Promise(resolve => {
       const startTime = Date.now();
       const [cmd, ...args] = command.split(' ');
 
+      // 检查命令是否需要交互式输入
+      const needsInteractiveInput =
+        command.includes('cleanup') || command.includes('conflicts');
+
       // 创建自定义的 stdio 配置来捕获输出
       const child = spawn(cmd, args, {
         cwd: rootDir,
-        stdio: ['inherit', 'pipe', 'pipe'],
+        stdio: needsInteractiveInput
+          ? ['inherit', 'inherit', 'inherit']
+          : ['inherit', 'pipe', 'pipe'],
         env: { ...process.env, FORCE_COLOR: '1' },
         detached: false,
         // 确保子进程能接收到中断信号
@@ -451,93 +464,161 @@ class InteractiveScripts {
       let checkLines = []; // 存储检查过程中的输出行
       let checkInProgress = false; // 标记是否正在检查中
 
-      // 处理标准输出
-      child.stdout.on('data', data => {
-        const output = data.toString();
+      // 处理标准输出（仅当不使用 inherit 时）
+      if (!needsInteractiveInput) {
+        child.stdout.on('data', data => {
+          const output = data.toString();
 
-        // 检查是否是进度显示行（包含"正在执行"）
-        if (output.includes('正在执行')) {
-          // 直接输出进度，不换行
-          process.stdout.write(output);
-        } else {
-          // 处理其他输出
-          const lines = output.split('\n');
-          lines.forEach(line => {
-            if (line.trim()) {
-              // 检查是否是检查相关的输出
-              if (
-                line.includes('🔍') ||
-                line.includes('📦') ||
-                line.includes('检查')
-              ) {
-                // 替换为眼睛图标
-                const modifiedLine = line.replace(/🔍|📦/, '👁️');
-                console.log(modifiedLine);
-                outputLines.push(modifiedLine);
-                checkLines.push(modifiedLine); // 记录检查行
-                checkInProgress = true; // 标记正在检查中
-              } else if (line.includes('✅') || line.includes('❌')) {
-                // 如果有正在进行的检查，覆盖掉检查行
-                if (checkInProgress) {
-                  // 清除上一行（检查中的行）
-                  process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
-                  checkInProgress = false;
+          // 检查是否是进度显示行（包含"正在执行"）
+          if (output.includes('正在执行')) {
+            // 直接输出进度，不换行
+            process.stdout.write(output);
+          } else {
+            // 处理其他输出
+            const lines = output.split('\n');
+            lines.forEach(line => {
+              if (line.trim()) {
+                // 检查是否是扫描中的提示（包含"扫描"）
+                if (line.includes('👁️') && line.includes('扫描')) {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                  }
+                  // 直接输出扫描提示，不换行
+                  process.stdout.write(line);
+                  checkInProgress = true; // 标记正在扫描中
+                } else if (
+                  line.includes('✅') ||
+                  line.includes('❌') ||
+                  line.includes('📦')
+                ) {
+                  // 如果有正在进行的扫描，清除扫描提示
+                  if (checkInProgress) {
+                    // 清除扫描提示行
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  console.log(line);
+                  outputLines.push(line);
+                  checkLines.push(line); // 记录检查结果
+                } else if (
+                  line.includes('🧹') &&
+                  line.includes('清理未使用的依赖')
+                ) {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  console.log(line);
+                  outputLines.push(line);
+                } else if (
+                  line.includes('🔍') ||
+                  line.includes('📦') ||
+                  line.includes('检查')
+                ) {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  // 替换为眼睛图标
+                  const modifiedLine = line.replace(/🔍|📦/, '👁️');
+                  console.log(modifiedLine);
+                  outputLines.push(modifiedLine);
+                  checkLines.push(modifiedLine); // 记录检查行
+                } else {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  console.log(line);
+                  outputLines.push(line);
                 }
-                console.log(line);
-                outputLines.push(line);
-                checkLines.push(line); // 记录检查结果
-              } else {
-                console.log(line);
-                outputLines.push(line);
               }
-            }
-          });
-        }
-      });
+            });
+          }
+        });
+      }
 
-      // 处理标准错误
-      child.stderr.on('data', data => {
-        const output = data.toString();
+      // 处理标准错误（仅当不使用 inherit 时）
+      if (!needsInteractiveInput) {
+        child.stderr.on('data', data => {
+          const output = data.toString();
 
-        // 检查是否是进度显示行（包含"正在执行"）
-        if (output.includes('正在执行')) {
-          // 直接输出进度，不换行
-          process.stdout.write(output);
-        } else {
-          // 处理其他输出
-          const lines = output.split('\n');
-          lines.forEach(line => {
-            if (line.trim()) {
-              // 检查是否是检查相关的输出
-              if (
-                line.includes('🔍') ||
-                line.includes('📦') ||
-                line.includes('检查')
-              ) {
-                // 替换为眼睛图标
-                const modifiedLine = line.replace(/🔍|📦/, '👁️');
-                console.log(modifiedLine);
-                outputLines.push(modifiedLine);
-                checkLines.push(modifiedLine); // 记录检查行
-                checkInProgress = true; // 标记正在检查中
-              } else if (line.includes('✅') || line.includes('❌')) {
-                // 如果有正在进行的检查，覆盖掉检查行
-                if (checkInProgress) {
-                  // 清除上一行（检查中的行）
-                  process.stdout.write('\x1b[1A\x1b[2K'); // 向上移动一行并清除
-                  checkInProgress = false;
+          // 检查是否是进度显示行（包含"正在执行"）
+          if (output.includes('正在执行')) {
+            // 直接输出进度，不换行
+            process.stdout.write(output);
+          } else {
+            // 处理其他输出
+            const lines = output.split('\n');
+            lines.forEach(line => {
+              if (line.trim()) {
+                // 检查是否是扫描中的提示（包含"扫描"）
+                if (line.includes('👁️') && line.includes('扫描')) {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                  }
+                  // 直接输出扫描提示，不换行
+                  process.stdout.write(line);
+                  checkInProgress = true; // 标记正在扫描中
+                } else if (
+                  line.includes('✅') ||
+                  line.includes('❌') ||
+                  line.includes('📦')
+                ) {
+                  // 如果有正在进行的扫描，清除扫描提示
+                  if (checkInProgress) {
+                    // 清除扫描提示行
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  console.log(line);
+                  outputLines.push(line);
+                  checkLines.push(line); // 记录检查结果
+                } else if (
+                  line.includes('🧹') &&
+                  line.includes('清理未使用的依赖')
+                ) {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  console.log(line);
+                  outputLines.push(line);
+                } else if (
+                  line.includes('🔍') ||
+                  line.includes('📦') ||
+                  line.includes('检查')
+                ) {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  // 替换为眼睛图标
+                  const modifiedLine = line.replace(/🔍|📦/, '👁️');
+                  console.log(modifiedLine);
+                  outputLines.push(modifiedLine);
+                  checkLines.push(modifiedLine); // 记录检查行
+                } else {
+                  // 清除之前的扫描提示
+                  if (checkInProgress) {
+                    process.stdout.write('\r' + ' '.repeat(50) + '\r');
+                    checkInProgress = false;
+                  }
+                  console.log(line);
+                  outputLines.push(line);
                 }
-                console.log(line);
-                outputLines.push(line);
-                checkLines.push(line); // 记录检查结果
-              } else {
-                console.log(line);
-                outputLines.push(line);
               }
-            }
-          });
-        }
-      });
+            });
+          }
+        });
+      }
 
       const interruptHandler = () => {
         if (!isInterrupted) {
@@ -632,6 +713,398 @@ class InteractiveScripts {
         resolve();
       });
     });
+  }
+
+  // 执行清理命令
+  async executeCleanupCommand() {
+    try {
+      const { execSync } = await import('child_process');
+      const { join } = await import('path');
+      const { fileURLToPath } = await import('url');
+
+      const __dirname = fileURLToPath(new URL('.', import.meta.url));
+      const rootDir = join(__dirname, '..');
+
+      console.log('📦 发现 7 个包\n');
+      console.log('🧹 清理未使用的依赖...');
+
+      // 需要先安装 depcheck
+      try {
+        execSync('pnpm list depcheck', { cwd: rootDir, stdio: 'ignore' });
+      } catch (error) {
+        console.log('安装 depcheck...');
+        execSync('pnpm add -D depcheck', { cwd: rootDir, stdio: 'inherit' });
+      }
+
+      // 扫描各个包
+      const packages = [
+        { name: 'ui', path: join(rootDir, 'packages/ui') },
+        { name: 'types', path: join(rootDir, 'packages/types') },
+        { name: 'core', path: join(rootDir, 'packages/core') },
+        { name: 'utils', path: join(rootDir, 'packages/utils') },
+        { name: 'test-package', path: join(rootDir, 'packages/test-package') },
+        {
+          name: 'example-package',
+          path: join(rootDir, 'packages/example-package'),
+        },
+        { name: 'data', path: join(rootDir, 'packages/data') },
+      ];
+
+      const allUnusedDeps = [];
+      const allUnusedDevDeps = [];
+
+      // 扫描子包
+      for (const pkg of packages) {
+        process.stdout.write(`👁️  扫描 ${pkg.name}...`);
+
+        try {
+          const result = execSync('npx depcheck --json', {
+            cwd: pkg.path,
+            encoding: 'utf8',
+            stdio: 'pipe',
+          });
+          const depcheckResult = JSON.parse(result);
+
+          const unusedDeps = depcheckResult.dependencies.filter(dep => {
+            if (dep.startsWith('@imtp/')) return false;
+            return true;
+          });
+
+          const unusedDevDeps = depcheckResult.devDependencies.filter(dep => {
+            if (
+              dep.includes('test') ||
+              dep.includes('vitest') ||
+              dep.includes('coverage')
+            ) {
+              return false;
+            }
+            return true;
+          });
+
+          process.stdout.write('\r' + ' '.repeat(50) + '\r');
+
+          if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+            console.log(`📦 ${pkg.name} - 发现未使用依赖:`);
+            if (unusedDeps.length > 0) {
+              console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+              allUnusedDeps.push({ package: pkg.name, deps: unusedDeps });
+            }
+            if (unusedDevDeps.length > 0) {
+              console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+              allUnusedDevDeps.push({ package: pkg.name, deps: unusedDevDeps });
+            }
+          } else {
+            console.log(`✅ ${pkg.name} - 无未使用依赖`);
+          }
+        } catch (error) {
+          process.stdout.write('\r' + ' '.repeat(50) + '\r');
+
+          if (error.status === 255) {
+            try {
+              const depcheckResult = JSON.parse(error.stdout || '{}');
+              const unusedDeps = (depcheckResult.dependencies || []).filter(
+                dep => {
+                  if (dep.startsWith('@imtp/')) return false;
+                  return true;
+                }
+              );
+              const unusedDevDeps = (
+                depcheckResult.devDependencies || []
+              ).filter(dep => {
+                if (
+                  dep.includes('test') ||
+                  dep.includes('vitest') ||
+                  dep.includes('coverage')
+                ) {
+                  return false;
+                }
+                return true;
+              });
+
+              if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+                console.log(`📦 ${pkg.name} - 发现未使用依赖:`);
+                if (unusedDeps.length > 0) {
+                  console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+                  allUnusedDeps.push({ package: pkg.name, deps: unusedDeps });
+                }
+                if (unusedDevDeps.length > 0) {
+                  console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+                  allUnusedDevDeps.push({
+                    package: pkg.name,
+                    deps: unusedDevDeps,
+                  });
+                }
+              } else {
+                console.log(`✅ ${pkg.name} - 无未使用依赖`);
+              }
+            } catch (parseError) {
+              console.log(`✅ ${pkg.name} - 分析完成`);
+            }
+          } else {
+            console.log(`✅ ${pkg.name} - 分析完成`);
+          }
+        }
+      }
+
+      // 扫描根目录
+      process.stdout.write(`👁️  扫描根目录...`);
+      try {
+        const result = execSync('npx depcheck --json', {
+          cwd: rootDir,
+          encoding: 'utf8',
+          stdio: 'pipe',
+        });
+        const depcheckResult = JSON.parse(result);
+
+        const unusedDeps = depcheckResult.dependencies.filter(dep => {
+          if (dep.startsWith('@imtp/')) return false;
+          return true;
+        });
+
+        const unusedDevDeps = depcheckResult.devDependencies.filter(dep => {
+          const importantTools = [
+            'typescript',
+            'vite',
+            'vitest',
+            'eslint',
+            'prettier',
+            'husky',
+            'lint-staged',
+            '@changesets/cli',
+            '@commitlint/cli',
+            '@commitlint/config-conventional',
+            'semantic-release',
+            '@semantic-release/changelog',
+            '@semantic-release/git',
+            '@semantic-release/github',
+            '@semantic-release/npm',
+            '@graphql-codegen/typescript',
+            '@graphql-codegen/typescript-operations',
+            'graphql-codegen',
+            'openapi-typescript',
+            'swagger-typescript-api',
+            '@unocss/preset-attributify',
+            '@unocss/preset-icons',
+            '@unocss/preset-uno',
+            'unocss',
+            'unplugin-auto-import',
+            'unplugin-vue-components',
+            'unplugin-vue-define-options',
+            'typedoc',
+            'typedoc-plugin-markdown',
+            '@vitest/coverage-v8',
+            '@vitest/ui',
+            'rimraf',
+            'depcheck',
+            'terser',
+            'dotenv',
+            'vitepress',
+          ];
+          if (importantTools.includes(dep)) return false;
+          return true;
+        });
+
+        process.stdout.write('\r' + ' '.repeat(50) + '\r');
+
+        if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+          console.log(`📦 根目录 - 发现未使用依赖:`);
+          if (unusedDeps.length > 0) {
+            console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+            allUnusedDeps.push({ package: '根目录', deps: unusedDeps });
+          }
+          if (unusedDevDeps.length > 0) {
+            console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+            allUnusedDevDeps.push({ package: '根目录', deps: unusedDevDeps });
+          }
+        } else {
+          console.log(`✅ 根目录 - 无未使用依赖`);
+        }
+      } catch (error) {
+        process.stdout.write('\r' + ' '.repeat(50) + '\r');
+
+        if (error.status === 255) {
+          try {
+            const depcheckResult = JSON.parse(error.stdout || '{}');
+            const unusedDeps = (depcheckResult.dependencies || []).filter(
+              dep => {
+                if (dep.startsWith('@imtp/')) return false;
+                return true;
+              }
+            );
+            const unusedDevDeps = (depcheckResult.devDependencies || []).filter(
+              dep => {
+                const importantTools = [
+                  'typescript',
+                  'vite',
+                  'vitest',
+                  'eslint',
+                  'prettier',
+                  'husky',
+                  'lint-staged',
+                  '@changesets/cli',
+                  '@commitlint/cli',
+                  '@commitlint/config-conventional',
+                  'semantic-release',
+                  '@semantic-release/changelog',
+                  '@semantic-release/git',
+                  '@semantic-release/github',
+                  '@semantic-release/npm',
+                  '@graphql-codegen/typescript',
+                  '@graphql-codegen/typescript-operations',
+                  'graphql-codegen',
+                  'openapi-typescript',
+                  'swagger-typescript-api',
+                  '@unocss/preset-attributify',
+                  '@unocss/preset-icons',
+                  '@unocss/preset-uno',
+                  'unocss',
+                  'unplugin-auto-import',
+                  'unplugin-vue-components',
+                  'unplugin-vue-define-options',
+                  'typedoc',
+                  'typedoc-plugin-markdown',
+                  '@vitest/coverage-v8',
+                  '@vitest/ui',
+                  'rimraf',
+                  'depcheck',
+                  'terser',
+                  'dotenv',
+                  'vitepress',
+                ];
+                if (importantTools.includes(dep)) return false;
+                return true;
+              }
+            );
+
+            if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+              console.log(`📦 根目录 - 发现未使用依赖:`);
+              if (unusedDeps.length > 0) {
+                console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+                allUnusedDeps.push({ package: '根目录', deps: unusedDeps });
+              }
+              if (unusedDevDeps.length > 0) {
+                console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+                allUnusedDevDeps.push({
+                  package: '根目录',
+                  deps: unusedDevDeps,
+                });
+              }
+            } else {
+              console.log(`✅ 根目录 - 无未使用依赖`);
+            }
+          } catch (parseError) {
+            console.log(`✅ 根目录 - 分析完成`);
+          }
+        } else {
+          console.log(`✅ 根目录 - 分析完成`);
+        }
+      }
+
+      // 如果有未使用的依赖，询问用户是否要清理
+      if (allUnusedDeps.length > 0 || allUnusedDevDeps.length > 0) {
+        console.log('\n🗑️  发现未使用的依赖，是否要清理？');
+
+        const totalUnusedDeps = allUnusedDeps.reduce(
+          (sum, item) => sum + item.deps.length,
+          0
+        );
+        const totalUnusedDevDeps = allUnusedDevDeps.reduce(
+          (sum, item) => sum + item.deps.length,
+          0
+        );
+
+        console.log(
+          `   📊 总计: ${totalUnusedDeps} 个生产依赖, ${totalUnusedDevDeps} 个开发依赖`
+        );
+
+        const answer = await this.question(
+          '\n是否要清理这些未使用的依赖？(y/N): '
+        );
+
+        if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+          console.log('\n🧹 开始清理未使用的依赖...');
+          await this.removeUnusedDependencies(
+            allUnusedDeps,
+            allUnusedDevDeps,
+            rootDir
+          );
+        } else {
+          console.log('\n⏹️  跳过清理操作');
+        }
+      } else {
+        console.log('\n🎉 所有依赖都在使用中，无需清理！');
+      }
+
+      console.log('\n✅ 清理检查完成！');
+    } catch (error) {
+      console.error('清理未使用的依赖失败:', error.message);
+    }
+  }
+
+  // 移除未使用的依赖
+  async removeUnusedDependencies(allUnusedDeps, allUnusedDevDeps, rootDir) {
+    let totalRemoved = 0;
+    let totalPackagesModified = 0;
+
+    const fs = await import('fs');
+    const path = await import('path');
+
+    // 读取根目录 package.json
+    const rootPackageJsonPath = path.join(rootDir, 'package.json');
+    const rootPackageJson = JSON.parse(
+      fs.readFileSync(rootPackageJsonPath, 'utf8')
+    );
+
+    // 处理生产依赖
+    for (const item of allUnusedDeps) {
+      const { package: pkgName, deps } = item;
+
+      if (pkgName === '根目录') {
+        for (const dep of deps) {
+          if (rootPackageJson.dependencies?.[dep]) {
+            delete rootPackageJson.dependencies[dep];
+            console.log(`   🗑️  从根目录移除生产依赖: ${dep}`);
+            totalRemoved++;
+          }
+        }
+        totalPackagesModified++;
+      }
+    }
+
+    // 处理开发依赖
+    for (const item of allUnusedDevDeps) {
+      const { package: pkgName, deps } = item;
+
+      if (pkgName === '根目录') {
+        for (const dep of deps) {
+          if (rootPackageJson.devDependencies?.[dep]) {
+            delete rootPackageJson.devDependencies[dep];
+            console.log(`   🗑️  从根目录移除开发依赖: ${dep}`);
+            totalRemoved++;
+          }
+        }
+        totalPackagesModified++;
+      }
+    }
+
+    // 保存修改
+    if (totalRemoved > 0) {
+      fs.writeFileSync(
+        rootPackageJsonPath,
+        JSON.stringify(rootPackageJson, null, 2)
+      );
+
+      console.log('\n📊 清理结果汇总:');
+      console.log(`   • 移除的依赖数: ${totalRemoved}`);
+      console.log(`   • 修改的包数: ${totalPackagesModified}`);
+
+      console.log('\n💡 建议:');
+      console.log('   1. 运行 pnpm install 重新安装依赖');
+      console.log('   2. 运行 pnpm deps:cleanup 验证清理结果');
+      console.log('   3. 测试项目确保功能正常');
+    } else {
+      console.log('\n⚠️  没有找到需要移除的依赖');
+    }
   }
 
   // 等待用户输入

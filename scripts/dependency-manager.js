@@ -624,19 +624,31 @@ class DependencyManager {
   }
 
   // 等待用户输入
-  async question(prompt) {
-    return new Promise(resolve => {
-      import('readline').then(readline => {
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-        });
+  question(prompt) {
+    return new Promise((resolve, reject) => {
+      import('readline')
+        .then(readline => {
+          const rl = readline.default.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+          });
 
-        rl.question(prompt, answer => {
-          rl.close();
-          resolve(answer.trim());
+          rl.question(prompt, answer => {
+            rl.close();
+            resolve(answer.trim());
+          });
+
+          // 添加错误处理
+          rl.on('error', error => {
+            console.error('输入错误:', error.message);
+            rl.close();
+            resolve('n'); // 默认返回 'n'
+          });
+        })
+        .catch(error => {
+          console.error('readline 导入失败:', error.message);
+          resolve('n'); // 默认返回 'n'
         });
-      });
     });
   }
 
@@ -765,13 +777,19 @@ class DependencyManager {
         execSync('pnpm add -D depcheck', { cwd: rootDir, stdio: 'inherit' });
       }
 
+      const allUnusedDeps = [];
+      const allUnusedDevDeps = [];
+
       // 为每个包运行 depcheck，但忽略 workspace 依赖的误报
       for (const pkg of this.packages) {
-        console.log(`\n📦 ${pkg.name} 未使用依赖:`);
+        // 显示扫描中的提示
+        process.stdout.write(`👁️  扫描 ${pkg.name}...`);
+
         try {
           const result = execSync('npx depcheck --json', {
             cwd: pkg.path,
             encoding: 'utf8',
+            stdio: 'pipe',
           });
           const depcheckResult = JSON.parse(result);
 
@@ -796,28 +814,88 @@ class DependencyManager {
             return true;
           });
 
-          if (unusedDeps.length > 0) {
-            console.log(`  未使用的生产依赖: ${unusedDeps.join(', ')}`);
-          }
+          // 清除扫描中的提示
+          process.stdout.write('\r' + ' '.repeat(50) + '\r');
 
-          if (unusedDevDeps.length > 0) {
-            console.log(`  未使用的开发依赖: ${unusedDevDeps.join(', ')}`);
-          }
-
-          if (unusedDeps.length === 0 && unusedDevDeps.length === 0) {
-            console.log('  所有依赖都在使用中');
+          // 显示扫描结果
+          if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+            console.log(`📦 ${pkg.name} - 发现未使用依赖:`);
+            if (unusedDeps.length > 0) {
+              console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+              allUnusedDeps.push({ package: pkg.name, deps: unusedDeps });
+            }
+            if (unusedDevDeps.length > 0) {
+              console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+              allUnusedDevDeps.push({ package: pkg.name, deps: unusedDevDeps });
+            }
+          } else {
+            console.log(`✅ ${pkg.name} - 无未使用依赖`);
           }
         } catch (error) {
-          console.log('  分析完成');
+          // 清除扫描中的提示
+          process.stdout.write('\r' + ' '.repeat(50) + '\r');
+
+          // 检查是否是 depcheck 发现未使用依赖的情况（退出码 255）
+          if (error.status === 255) {
+            try {
+              const depcheckResult = JSON.parse(error.stdout || '{}');
+
+              // 过滤掉 workspace 依赖的误报
+              const unusedDeps = (depcheckResult.dependencies || []).filter(
+                dep => {
+                  if (dep.startsWith('@imtp/')) {
+                    return false;
+                  }
+                  return true;
+                }
+              );
+
+              const unusedDevDeps = (
+                depcheckResult.devDependencies || []
+              ).filter(dep => {
+                if (
+                  dep.includes('test') ||
+                  dep.includes('vitest') ||
+                  dep.includes('coverage')
+                ) {
+                  return false;
+                }
+                return true;
+              });
+
+              // 显示扫描结果
+              if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+                console.log(`📦 ${pkg.name} - 发现未使用依赖:`);
+                if (unusedDeps.length > 0) {
+                  console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+                  allUnusedDeps.push({ package: pkg.name, deps: unusedDeps });
+                }
+                if (unusedDevDeps.length > 0) {
+                  console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+                  allUnusedDevDeps.push({
+                    package: pkg.name,
+                    deps: unusedDevDeps,
+                  });
+                }
+              } else {
+                console.log(`✅ ${pkg.name} - 无未使用依赖`);
+              }
+            } catch (parseError) {
+              console.log(`✅ ${pkg.name} - 分析完成`);
+            }
+          } else {
+            console.log(`✅ ${pkg.name} - 分析完成`);
+          }
         }
       }
 
       // 根目录的特殊处理
-      console.log('\n📦 根目录未使用依赖:');
+      process.stdout.write(`👁️  扫描根目录...`);
       try {
         const result = execSync('npx depcheck --json', {
           cwd: rootDir,
           encoding: 'utf8',
+          stdio: 'pipe',
         });
         const depcheckResult = JSON.parse(result);
 
@@ -828,7 +906,7 @@ class DependencyManager {
         });
 
         const unusedDevDeps = depcheckResult.devDependencies.filter(dep => {
-          // 保留重要的工具依赖
+          // 保留重要的工具依赖和 monorepo 管理工具
           const importantTools = [
             'typescript',
             'vite',
@@ -837,24 +915,190 @@ class DependencyManager {
             'prettier',
             'husky',
             'lint-staged',
+            // monorepo 管理工具
+            '@changesets/cli',
+            '@commitlint/cli',
+            '@commitlint/config-conventional',
+            'semantic-release',
+            '@semantic-release/changelog',
+            '@semantic-release/git',
+            '@semantic-release/github',
+            '@semantic-release/npm',
+            // 代码生成工具
+            '@graphql-codegen/typescript',
+            '@graphql-codegen/typescript-operations',
+            'graphql-codegen',
+            'openapi-typescript',
+            'swagger-typescript-api',
+            // UI 和样式工具
+            '@unocss/preset-attributify',
+            '@unocss/preset-icons',
+            '@unocss/preset-uno',
+            'unocss',
+            'unplugin-auto-import',
+            'unplugin-vue-components',
+            'unplugin-vue-define-options',
+            // 文档工具
+            'typedoc',
+            'typedoc-plugin-markdown',
+            // 测试和覆盖率工具
+            '@vitest/coverage-v8',
+            '@vitest/ui',
+            // 构建和清理工具
+            'rimraf',
+            'depcheck',
+            'terser',
+            // 环境管理工具
+            'dotenv',
+            // 其他重要工具
+            'vitepress',
           ];
           if (importantTools.includes(dep)) return false;
           return true;
         });
 
-        if (unusedDeps.length > 0) {
-          console.log(`  未使用的生产依赖: ${unusedDeps.join(', ')}`);
-        }
+        // 清除扫描中的提示
+        process.stdout.write('\r' + ' '.repeat(50) + '\r');
 
-        if (unusedDevDeps.length > 0) {
-          console.log(`  未使用的开发依赖: ${unusedDevDeps.join(', ')}`);
-        }
-
-        if (unusedDeps.length === 0 && unusedDevDeps.length === 0) {
-          console.log('  所有依赖都在使用中');
+        // 显示扫描结果
+        if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+          console.log(`📦 根目录 - 发现未使用依赖:`);
+          if (unusedDeps.length > 0) {
+            console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+            allUnusedDeps.push({ package: '根目录', deps: unusedDeps });
+          }
+          if (unusedDevDeps.length > 0) {
+            console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+            allUnusedDevDeps.push({ package: '根目录', deps: unusedDevDeps });
+          }
+        } else {
+          console.log(`✅ 根目录 - 无未使用依赖`);
         }
       } catch (error) {
-        console.log('  分析完成');
+        // 清除扫描中的提示
+        process.stdout.write('\r' + ' '.repeat(50) + '\r');
+
+        // 检查是否是 depcheck 发现未使用依赖的情况（退出码 255）
+        if (error.status === 255) {
+          try {
+            const depcheckResult = JSON.parse(error.stdout || '{}');
+
+            // 过滤掉 workspace 依赖和工具依赖
+            const unusedDeps = (depcheckResult.dependencies || []).filter(
+              dep => {
+                if (dep.startsWith('@imtp/')) return false;
+                return true;
+              }
+            );
+
+            const unusedDevDeps = (depcheckResult.devDependencies || []).filter(
+              dep => {
+                // 保留重要的工具依赖和 monorepo 管理工具
+                const importantTools = [
+                  'typescript',
+                  'vite',
+                  'vitest',
+                  'eslint',
+                  'prettier',
+                  'husky',
+                  'lint-staged',
+                  // monorepo 管理工具
+                  '@changesets/cli',
+                  '@commitlint/cli',
+                  '@commitlint/config-conventional',
+                  'semantic-release',
+                  '@semantic-release/changelog',
+                  '@semantic-release/git',
+                  '@semantic-release/github',
+                  '@semantic-release/npm',
+                  // 代码生成工具
+                  '@graphql-codegen/typescript',
+                  '@graphql-codegen/typescript-operations',
+                  'graphql-codegen',
+                  'openapi-typescript',
+                  'swagger-typescript-api',
+                  // UI 和样式工具
+                  '@unocss/preset-attributify',
+                  '@unocss/preset-icons',
+                  '@unocss/preset-uno',
+                  'unocss',
+                  'unplugin-auto-import',
+                  'unplugin-vue-components',
+                  'unplugin-vue-define-options',
+                  // 文档工具
+                  'typedoc',
+                  'typedoc-plugin-markdown',
+                  // 测试和覆盖率工具
+                  '@vitest/coverage-v8',
+                  '@vitest/ui',
+                  // 构建和清理工具
+                  'rimraf',
+                  'depcheck',
+                  'terser',
+                  // 环境管理工具
+                  'dotenv',
+                  // 其他重要工具
+                  'vitepress',
+                ];
+                if (importantTools.includes(dep)) return false;
+                return true;
+              }
+            );
+
+            // 显示扫描结果
+            if (unusedDeps.length > 0 || unusedDevDeps.length > 0) {
+              console.log(`📦 根目录 - 发现未使用依赖:`);
+              if (unusedDeps.length > 0) {
+                console.log(`   🚨 生产依赖: ${unusedDeps.join(', ')}`);
+                allUnusedDeps.push({ package: '根目录', deps: unusedDeps });
+              }
+              if (unusedDevDeps.length > 0) {
+                console.log(`   ⚠️  开发依赖: ${unusedDevDeps.join(', ')}`);
+                allUnusedDevDeps.push({
+                  package: '根目录',
+                  deps: unusedDevDeps,
+                });
+              }
+            } else {
+              console.log(`✅ 根目录 - 无未使用依赖`);
+            }
+          } catch (parseError) {
+            console.log(`✅ 根目录 - 分析完成`);
+          }
+        } else {
+          console.log(`✅ 根目录 - 分析完成`);
+        }
+      }
+
+      // 如果有未使用的依赖，询问用户是否要清理
+      if (allUnusedDeps.length > 0 || allUnusedDevDeps.length > 0) {
+        console.log('\n🗑️  发现未使用的依赖，是否要清理？');
+
+        const totalUnusedDeps = allUnusedDeps.reduce(
+          (sum, item) => sum + item.deps.length,
+          0
+        );
+        const totalUnusedDevDeps = allUnusedDevDeps.reduce(
+          (sum, item) => sum + item.deps.length,
+          0
+        );
+
+        console.log(
+          `   📊 总计: ${totalUnusedDeps} 个生产依赖, ${totalUnusedDevDeps} 个开发依赖`
+        );
+
+        const answer = await this.question(
+          '\n是否要清理这些未使用的依赖？(y/N): '
+        );
+
+        if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+          console.log('\n🧹 开始清理未使用的依赖...');
+          await this.removeUnusedDependencies(allUnusedDeps, allUnusedDevDeps);
+        } else {
+          console.log('\n⏹️  跳过清理操作');
+        }
+      } else {
+        console.log('\n🎉 所有依赖都在使用中，无需清理！');
       }
     } catch (error) {
       console.error('清理未使用依赖失败:', error.message);
@@ -983,6 +1227,105 @@ class DependencyManager {
     }
 
     return isDevInRoot;
+  }
+
+  // 移除未使用的依赖
+  async removeUnusedDependencies(allUnusedDeps, allUnusedDevDeps) {
+    let totalRemoved = 0;
+    let totalPackagesModified = 0;
+
+    // 处理生产依赖
+    for (const item of allUnusedDeps) {
+      const { package: pkgName, deps } = item;
+
+      if (pkgName === '根目录') {
+        // 处理根目录
+        for (const dep of deps) {
+          if (this.rootPackageJson.dependencies?.[dep]) {
+            delete this.rootPackageJson.dependencies[dep];
+            console.log(`   🗑️  从根目录移除生产依赖: ${dep}`);
+            totalRemoved++;
+          }
+        }
+        totalPackagesModified++;
+      } else {
+        // 处理子包
+        const pkg = this.packages.find(p => p.name === pkgName);
+        if (pkg && pkg.packageJson.dependencies) {
+          for (const dep of deps) {
+            if (pkg.packageJson.dependencies[dep]) {
+              delete pkg.packageJson.dependencies[dep];
+              console.log(`   🗑️  从 ${pkgName} 移除生产依赖: ${dep}`);
+              totalRemoved++;
+            }
+          }
+          totalPackagesModified++;
+        }
+      }
+    }
+
+    // 处理开发依赖
+    for (const item of allUnusedDevDeps) {
+      const { package: pkgName, deps } = item;
+
+      if (pkgName === '根目录') {
+        // 处理根目录
+        for (const dep of deps) {
+          if (this.rootPackageJson.devDependencies?.[dep]) {
+            delete this.rootPackageJson.devDependencies[dep];
+            console.log(`   🗑️  从根目录移除开发依赖: ${dep}`);
+            totalRemoved++;
+          }
+        }
+        totalPackagesModified++;
+      } else {
+        // 处理子包
+        const pkg = this.packages.find(p => p.name === pkgName);
+        if (pkg && pkg.packageJson.devDependencies) {
+          for (const dep of deps) {
+            if (pkg.packageJson.devDependencies[dep]) {
+              delete pkg.packageJson.devDependencies[dep];
+              console.log(`   🗑️  从 ${pkgName} 移除开发依赖: ${dep}`);
+              totalRemoved++;
+            }
+          }
+          totalPackagesModified++;
+        }
+      }
+    }
+
+    // 保存修改
+    if (totalRemoved > 0) {
+      const fs = await import('fs');
+      const path = await import('path');
+
+      // 保存根目录 package.json
+      const rootPackageJsonPath = path.join(rootDir, 'package.json');
+      fs.writeFileSync(
+        rootPackageJsonPath,
+        JSON.stringify(this.rootPackageJson, null, 2)
+      );
+
+      // 保存子包 package.json
+      for (const pkg of this.packages) {
+        const packageJsonPath = path.join(pkg.path, 'package.json');
+        fs.writeFileSync(
+          packageJsonPath,
+          JSON.stringify(pkg.packageJson, null, 2)
+        );
+      }
+
+      console.log('\n📊 清理结果汇总:');
+      console.log(`   • 移除的依赖数: ${totalRemoved}`);
+      console.log(`   • 修改的包数: ${totalPackagesModified}`);
+
+      console.log('\n💡 建议:');
+      console.log('   1. 运行 pnpm install 重新安装依赖');
+      console.log('   2. 运行 pnpm deps:cleanup 验证清理结果');
+      console.log('   3. 测试项目确保功能正常');
+    } else {
+      console.log('\n⚠️  没有找到需要移除的依赖');
+    }
   }
 
   // 生成依赖报告
