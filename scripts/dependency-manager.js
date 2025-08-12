@@ -183,12 +183,19 @@ class DependencyManager {
             resolve({ success: false, interrupted: true });
           } else if (code === 0) {
             console.log(`\n✅ 命令执行成功 (耗时 ${duration}s)`);
-            resolve({ success: true, output: outputBuffer });
+            resolve({ success: true, output: outputBuffer, code });
           } else {
-            console.log(
-              `\n❌ 命令执行失败 (耗时 ${duration}s, 退出码: ${code})`
-            );
-            resolve({ success: false, output: outputBuffer, code });
+            // 对于 pnpm outdated 命令，退出码 1 表示有可更新的依赖，这是正常的
+            const isOutdatedCommand = command.includes('pnpm outdated');
+            if (isOutdatedCommand && code === 1) {
+              console.log(`\n✅ 命令执行成功 (耗时 ${duration}s)`);
+              resolve({ success: true, output: outputBuffer, code });
+            } else {
+              console.log(
+                `\n❌ 命令执行失败 (耗时 ${duration}s, 退出码: ${code})`
+              );
+              resolve({ success: false, output: outputBuffer, code });
+            }
           }
         }
       });
@@ -241,6 +248,10 @@ class DependencyManager {
           console.log('✅ 所有依赖都是最新的');
         } else if (result.code === 1) {
           console.log('📋 发现可更新的依赖');
+          // 显示具体的更新信息
+          if (result.output && result.output.trim()) {
+            console.log('\n' + result.output.trim());
+          }
         }
       } else {
         console.log('⚠️  检查失败:', result.error || '未知错误');
@@ -276,6 +287,10 @@ class DependencyManager {
               console.log(`✅ ${pkg.name} - 通过`);
             } else if (result.code === 1) {
               console.log(`📋 ${pkg.name} - 发现可更新的依赖`);
+              // 显示具体的更新信息
+              if (result.output && result.output.trim()) {
+                console.log('\n' + result.output.trim());
+              }
             }
           } else {
             console.log(`⚠️  ${pkg.name} - 检查失败，跳过`);
@@ -290,7 +305,7 @@ class DependencyManager {
   }
 
   // 检测版本冲突
-  detectConflicts() {
+  async detectConflicts() {
     console.log('\n⚠️  检测版本冲突...');
 
     const allDeps = new Map();
@@ -339,6 +354,9 @@ class DependencyManager {
           console.log(`    ${version.package}: ${version.version}`);
         });
       });
+
+      // 询问用户是否要修复版本冲突
+      await this.askToFixConflicts(conflicts);
     } else {
       console.log('✅ 未发现版本冲突');
     }
@@ -351,9 +369,275 @@ class DependencyManager {
           console.log(`    ${pkg}`);
         });
       });
+
+      // 分析重复依赖并提供优化建议
+      await this.analyzeDuplicates(duplicates);
     }
 
     return { conflicts, duplicates };
+  }
+
+  // 询问用户是否要修复版本冲突
+  async askToFixConflicts(conflicts) {
+    console.log('\n🔧 是否要自动修复这些版本冲突？');
+    console.log('   • 将使用根目录的版本作为标准');
+    console.log('   • 自动更新所有包的依赖版本');
+    console.log('   • 确保 monorepo 版本一致性');
+
+    const answer = await this.question('\n请输入 (y/N): ');
+
+    if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+      console.log('\n🚀 开始修复版本冲突...');
+      await this.fixVersionConflicts(conflicts);
+    } else {
+      console.log('\n⏹️  跳过版本修复');
+    }
+  }
+
+  // 修复版本冲突
+  async fixVersionConflicts(conflicts) {
+    // 定义需要统一的依赖
+    const requiredDependencies = {
+      typescript: 'devDependencies',
+      vite: 'devDependencies',
+      vitest: 'devDependencies',
+    };
+
+    let totalFixed = 0;
+    let totalChanges = 0;
+
+    for (const pkg of this.packages) {
+      console.log(`🔍 检查 ${pkg.name}...`);
+
+      let hasChanges = false;
+      const changes = [];
+
+      // 检查并修复 devDependencies
+      if (pkg.packageJson.devDependencies) {
+        for (const [depName, depType] of Object.entries(requiredDependencies)) {
+          const currentVersion = pkg.packageJson.devDependencies[depName];
+          const rootVersion = this.rootPackageJson[depType]?.[depName];
+
+          if (currentVersion && rootVersion && currentVersion !== rootVersion) {
+            const oldVersion = currentVersion;
+            pkg.packageJson.devDependencies[depName] = rootVersion;
+            hasChanges = true;
+            changes.push(`${depName}: ${oldVersion} → ${rootVersion}`);
+          }
+        }
+      }
+
+      if (hasChanges) {
+        // 保存修改后的 package.json
+        const fs = await import('fs');
+        const path = await import('path');
+        const packageJsonPath = path.join(pkg.path, 'package.json');
+
+        fs.writeFileSync(
+          packageJsonPath,
+          JSON.stringify(pkg.packageJson, null, 2)
+        );
+
+        console.log(`✅ ${pkg.name} - 修复了 ${changes.length} 个依赖版本:`);
+        changes.forEach(change => {
+          console.log(`   • ${change}`);
+        });
+
+        totalFixed++;
+        totalChanges += changes.length;
+      } else {
+        console.log(`✅ ${pkg.name} - 版本已是最新`);
+      }
+    }
+
+    console.log('\n📊 修复结果汇总:');
+    console.log(`   • 修复的包数: ${totalFixed}`);
+    console.log(`   • 修复的依赖数: ${totalChanges}`);
+
+    if (totalFixed > 0) {
+      console.log('\n💡 建议:');
+      console.log('   1. 运行 pnpm install 重新安装依赖');
+      console.log('   2. 运行 pnpm deps:conflicts 验证修复结果');
+    } else {
+      console.log('\n🎉 所有包的版本都已是最新，无需修复！');
+    }
+  }
+
+  // 分析重复依赖并提供优化建议
+  async analyzeDuplicates(duplicates) {
+    // 定义可以提升到根目录的依赖类型
+    const promotableDeps = {
+      // 开发依赖 - 通常可以提升
+      devDependencies: [
+        'typescript',
+        'vite',
+        'vitest',
+        'eslint',
+        'prettier',
+        '@typescript-eslint/eslint-plugin',
+        '@typescript-eslint/parser',
+        'rimraf',
+        'unocss',
+        'typedoc',
+        'typedoc-plugin-markdown',
+      ],
+      // 生产依赖 - 通常不建议提升
+      dependencies: [],
+    };
+
+    const candidatesForPromotion = [];
+    const analysisResults = [];
+
+    for (const duplicate of duplicates) {
+      const depName = duplicate.name;
+      const isDevDep = this.isDevDependency(depName);
+      const isPromotable = promotableDeps.devDependencies.includes(depName);
+
+      let recommendation = '';
+      let action = '';
+
+      if (isDevDep && isPromotable) {
+        recommendation = '✅ 建议提升到根目录';
+        action = 'promote';
+        candidatesForPromotion.push(duplicate);
+      } else if (isDevDep) {
+        recommendation = '⚠️  可考虑提升到根目录';
+        action = 'consider';
+      } else {
+        recommendation = '❌ 不建议提升（生产依赖）';
+        action = 'keep';
+      }
+
+      analysisResults.push({
+        name: depName,
+        version: duplicate.version,
+        packages: duplicate.packages,
+        recommendation,
+        action,
+        isDevDep,
+      });
+    }
+
+    // 显示分析结果
+    console.log('\n🔍 重复依赖分析:');
+    analysisResults.forEach(result => {
+      console.log(`\n  ${result.name} (${result.version}):`);
+      console.log(`    📦 位置: ${result.packages.join(', ')}`);
+      console.log(`    📋 类型: ${result.isDevDep ? '开发依赖' : '生产依赖'}`);
+      console.log(`    💡 建议: ${result.recommendation}`);
+    });
+
+    // 如果有可提升的依赖，询问用户是否要执行
+    if (candidatesForPromotion.length > 0) {
+      console.log('\n🚀 发现可提升的依赖:');
+      candidatesForPromotion.forEach(candidate => {
+        console.log(`   • ${candidate.name} (${candidate.version})`);
+      });
+
+      console.log('\n💡 提升优势:');
+      console.log('   • 减少重复定义，简化维护');
+      console.log('   • 统一版本管理，避免不一致');
+      console.log('   • 减少包体积和安装时间');
+      console.log('   • 利用 pnpm workspace 的依赖提升机制');
+
+      const answer = await this.question(
+        '\n是否要提升这些依赖到根目录？(y/N): '
+      );
+
+      if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
+        console.log('\n🔧 开始提升依赖...');
+        await this.promoteDependencies(candidatesForPromotion);
+      } else {
+        console.log('\n⏹️  跳过依赖提升');
+      }
+    } else {
+      console.log('\n💡 当前重复依赖都是合理的，无需特殊处理');
+    }
+  }
+
+  // 提升依赖到根目录
+  async promoteDependencies(candidates) {
+    let totalPromoted = 0;
+    let totalRemoved = 0;
+
+    for (const candidate of candidates) {
+      const depName = candidate.name;
+      const depVersion = candidate.version;
+
+      console.log(`\n📦 提升依赖: ${depName} (${depVersion})`);
+
+      // 确保根目录有该依赖
+      if (!this.rootPackageJson.devDependencies) {
+        this.rootPackageJson.devDependencies = {};
+      }
+
+      if (!this.rootPackageJson.devDependencies[depName]) {
+        this.rootPackageJson.devDependencies[depName] = depVersion;
+        console.log(`   ✅ 添加到根目录: ${depName}@${depVersion}`);
+        totalPromoted++;
+      }
+
+      // 从各个包中移除该依赖
+      for (const pkg of this.packages) {
+        if (pkg.packageJson.devDependencies?.[depName]) {
+          delete pkg.packageJson.devDependencies[depName];
+          console.log(`   🗑️  从 ${pkg.name} 中移除: ${depName}`);
+          totalRemoved++;
+        }
+      }
+    }
+
+    // 保存修改
+    if (totalPromoted > 0 || totalRemoved > 0) {
+      const fs = await import('fs');
+      const path = await import('path');
+
+      // 保存根目录 package.json
+      const rootPackageJsonPath = path.join(rootDir, 'package.json');
+      fs.writeFileSync(
+        rootPackageJsonPath,
+        JSON.stringify(this.rootPackageJson, null, 2)
+      );
+      console.log(`\n💾 已更新根目录 package.json`);
+
+      // 保存各个包的 package.json
+      for (const pkg of this.packages) {
+        const packageJsonPath = path.join(pkg.path, 'package.json');
+        fs.writeFileSync(
+          packageJsonPath,
+          JSON.stringify(pkg.packageJson, null, 2)
+        );
+      }
+      console.log(`💾 已更新 ${this.packages.length} 个包的 package.json`);
+
+      console.log('\n📊 提升结果汇总:');
+      console.log(`   • 提升的依赖数: ${totalPromoted}`);
+      console.log(`   • 移除的重复定义: ${totalRemoved}`);
+
+      console.log('\n💡 建议:');
+      console.log('   1. 运行 pnpm install 重新安装依赖');
+      console.log('   2. 运行 pnpm deps:conflicts 验证优化结果');
+      console.log('   3. 测试构建和开发流程确保正常');
+    } else {
+      console.log('\nℹ️  没有需要提升的依赖');
+    }
+  }
+
+  // 等待用户输入
+  async question(prompt) {
+    return new Promise(resolve => {
+      import('readline').then(readline => {
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+
+        rl.question(prompt, answer => {
+          rl.close();
+          resolve(answer.trim());
+        });
+      });
+    });
   }
 
   collectDependencies(packageJson, allDeps) {
@@ -581,7 +865,7 @@ class DependencyManager {
   async fixDuplicates() {
     console.log('\n🔧 修复重复依赖...');
 
-    const { duplicates } = this.detectConflicts();
+    const { duplicates } = await this.detectConflicts();
 
     if (duplicates.length === 0) {
       console.log('✅ 没有需要修复的重复依赖');
@@ -735,7 +1019,7 @@ class DependencyManager {
     console.log('🚀 开始智能依赖管理检查...\n');
 
     await this.checkUpdates();
-    this.detectConflicts();
+    await this.detectConflicts();
     await this.securityScan();
     await this.analyzeSize();
     await this.cleanupUnused();
@@ -786,7 +1070,7 @@ async function runCommand() {
         await manager.checkUpdates();
         break;
       case 'conflicts':
-        manager.detectConflicts();
+        await manager.detectConflicts();
         break;
       case 'fix-duplicates':
         await manager.fixDuplicates();

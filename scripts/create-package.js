@@ -30,6 +30,56 @@ if (fs.existsSync(packageDir)) {
   process.exit(1);
 }
 
+// 读取根目录的 package.json 来获取依赖版本
+const rootPackageJsonPath = path.join(__dirname, '..', 'package.json');
+let rootPackageJson;
+
+try {
+  rootPackageJson = JSON.parse(fs.readFileSync(rootPackageJsonPath, 'utf8'));
+} catch (error) {
+  console.error('无法读取根目录的 package.json:', error.message);
+  process.exit(1);
+}
+
+// 获取根目录的依赖版本
+const getDependencyVersion = (depName, deps) => {
+  if (deps && deps[depName]) {
+    return deps[depName];
+  }
+  return null;
+};
+
+// 定义新包需要的依赖及其在根目录中的位置
+const requiredDependencies = {
+  typescript: 'devDependencies',
+  vite: 'devDependencies',
+  vitest: 'devDependencies',
+};
+
+// 构建新包的依赖对象
+const buildDependencies = () => {
+  const devDependencies = {};
+
+  for (const [depName, depType] of Object.entries(requiredDependencies)) {
+    const version = getDependencyVersion(depName, rootPackageJson[depType]);
+    if (version) {
+      devDependencies[depName] = version;
+      console.log(`📦 继承依赖: ${depName}@${version}`);
+    } else {
+      console.warn(`⚠️  警告: 根目录中未找到 ${depName}，将使用默认版本`);
+      // 使用默认版本作为后备
+      const defaultVersions = {
+        typescript: '^5.9.2',
+        vite: '^7.1.0',
+        vitest: '^3.2.4',
+      };
+      devDependencies[depName] = defaultVersions[depName];
+    }
+  }
+
+  return devDependencies;
+};
+
 // 创建目录结构
 const dirs = [
   packageDir,
@@ -39,7 +89,7 @@ const dirs = [
 
 dirs.forEach(dir => {
   fs.mkdirSync(dir, { recursive: true });
-  console.log(`创建目录: ${dir}`);
+  console.log(`📁 创建目录: ${dir}`);
 });
 
 // 创建package.json
@@ -74,18 +124,14 @@ const packageJson = {
   publishConfig: {
     access: 'public',
   },
-  devDependencies: {
-    typescript: '^5.9.2',
-    vite: '^7.1.0',
-    vitest: '^3.2.4',
-  },
+  devDependencies: buildDependencies(),
 };
 
 fs.writeFileSync(
   path.join(packageDir, 'package.json'),
   JSON.stringify(packageJson, null, 2)
 );
-console.log(`创建文件: ${packageDir}/package.json`);
+console.log(`📄 创建文件: ${packageDir}/package.json`);
 
 // 创建tsconfig.json
 const tsconfig = {
@@ -102,7 +148,7 @@ fs.writeFileSync(
   path.join(packageDir, 'tsconfig.json'),
   JSON.stringify(tsconfig, null, 2)
 );
-console.log(`创建文件: ${packageDir}/tsconfig.json`);
+console.log(`📄 创建文件: ${packageDir}/tsconfig.json`);
 
 // 创建src/index.ts
 const indexTs = `// ${packageName} 包的主入口文件
@@ -117,7 +163,7 @@ export default {
 };`;
 
 fs.writeFileSync(path.join(packageDir, 'src', 'index.ts'), indexTs);
-console.log(`创建文件: ${packageDir}/src/index.ts`);
+console.log(`📄 创建文件: ${packageDir}/src/index.ts`);
 
 // 创建README.md
 const readme = `# @imtp/${packageName}
@@ -165,7 +211,7 @@ pnpm test
 MIT`;
 
 fs.writeFileSync(path.join(packageDir, 'README.md'), readme);
-console.log(`创建文件: ${packageDir}/README.md`);
+console.log(`📄 创建文件: ${packageDir}/README.md`);
 
 // 创建vitest.config.ts
 const vitestConfig = `import { createVitestConfig } from '../../configs/vitest.config';
@@ -173,7 +219,7 @@ const vitestConfig = `import { createVitestConfig } from '../../configs/vitest.c
 export default createVitestConfig();`;
 
 fs.writeFileSync(path.join(packageDir, 'vitest.config.ts'), vitestConfig);
-console.log(`创建文件: ${packageDir}/vitest.config.ts`);
+console.log(`📄 创建文件: ${packageDir}/vitest.config.ts`);
 
 // 创建测试文件
 const testFile = `import { describe, it, expect } from 'vitest';
@@ -196,7 +242,7 @@ describe('${packageName}', () => {
 });`;
 
 fs.writeFileSync(path.join(packageDir, 'tests', 'index.test.ts'), testFile);
-console.log(`创建文件: ${packageDir}/tests/index.test.ts`);
+console.log(`📄 创建文件: ${packageDir}/tests/index.test.ts`);
 
 // 创建vite.config.ts
 const viteConfig = `import { createViteLibConfig } from '../../configs/vite.lib.config';
@@ -209,11 +255,16 @@ export default createViteLibConfig({
 });`;
 
 fs.writeFileSync(path.join(packageDir, 'vite.config.ts'), viteConfig);
-console.log(`创建文件: ${packageDir}/vite.config.ts`);
+console.log(`📄 创建文件: ${packageDir}/vite.config.ts`);
 
 console.log('\n✅ 包创建成功！');
-console.log(`\n下一步操作:`);
+console.log(`\n🎯 优化特性:`);
+console.log(`   • 自动继承根目录的依赖版本，避免版本冲突`);
+console.log(`   • 使用统一的 TypeScript、Vite、Vitest 版本`);
+console.log(`   • 确保 monorepo 依赖一致性`);
+console.log(`\n📋 下一步操作:`);
 console.log(`1. cd packages/${packageName}`);
 console.log(`2. 编辑 src/index.ts 添加你的代码`);
 console.log(`3. 在根目录运行 pnpm install 安装依赖`);
 console.log(`4. 运行 pnpm dev 开始开发`);
+console.log(`\n💡 提示: 新包已使用与根目录相同的依赖版本，不会产生版本冲突！`);
