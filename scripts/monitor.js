@@ -206,21 +206,27 @@ function runInterruptibleCommand(
           );
         }
 
-        const duration = Math.floor((Date.now() - startTime) / 1000);
+        const duration = Date.now() - startTime;
 
         if (
           signal === 'SIGINT' ||
           signal === 'SIGTERM' ||
           signal === 'SIGKILL'
         ) {
-          console.log(`\n⚠️  命令被中断 (耗时 ${duration}s)`);
-          resolve({ success: false, interrupted: true });
+          console.log(
+            `\n⚠️  命令被中断 (耗时 ${Math.floor(duration / 1000)}s)`
+          );
+          resolve({ success: false, interrupted: true, duration });
         } else if (code === 0) {
-          console.log(`\n✅ 命令执行成功 (耗时 ${duration}s)`);
-          resolve({ success: true, output: outputBuffer });
+          console.log(
+            `\n✅ 命令执行成功 (耗时 ${Math.floor(duration / 1000)}s)`
+          );
+          resolve({ success: true, output: outputBuffer, duration });
         } else {
-          console.log(`\n❌ 命令执行失败 (耗时 ${duration}s, 退出码: ${code})`);
-          resolve({ success: false, output: outputBuffer, code });
+          console.log(
+            `\n❌ 命令执行失败 (耗时 ${Math.floor(duration / 1000)}s, 退出码: ${code})`
+          );
+          resolve({ success: false, output: outputBuffer, code, duration });
         }
       }
     });
@@ -242,9 +248,11 @@ function runInterruptibleCommand(
           );
         }
 
-        const duration = Math.floor((Date.now() - startTime) / 1000);
-        console.log(`\n❌ 命令执行错误 (耗时 ${duration}s): ${error.message}`);
-        resolve({ success: false, error: error.message });
+        const duration = Date.now() - startTime;
+        console.log(
+          `\n❌ 命令执行错误 (耗时 ${Math.floor(duration / 1000)}s): ${error.message}`
+        );
+        resolve({ success: false, error: error.message, duration });
       }
     });
   });
@@ -285,7 +293,8 @@ async function monitorBuild() {
       `${MONITOR_CONFIG.colors.green}✅ 构建成功${MONITOR_CONFIG.colors.reset}`
     );
     metrics.build.success = true;
-    logMetric('build', { success: true });
+    metrics.build.duration = result.duration; // 已经是毫秒
+    logMetric('build', { success: true, duration: result.duration });
 
     // 分析包大小
     await analyzePackageSizes();
@@ -296,7 +305,11 @@ async function monitorBuild() {
     );
     metrics.build.success = false;
     metrics.build.errors.push(result.error || '构建失败');
-    logMetric('build', { success: false, error: result.error });
+    logMetric('build', {
+      success: false,
+      error: result.error,
+      duration: result.duration,
+    });
     return false;
   }
 }
@@ -392,6 +405,7 @@ async function monitorTests() {
       `${MONITOR_CONFIG.colors.green}✅ 测试成功${MONITOR_CONFIG.colors.reset}`
     );
     metrics.test.success = true;
+    metrics.test.duration = result.duration; // 已经是毫秒
 
     // 提取覆盖率信息
     const coverageMatch = result.output.match(/All files\s+\|\s+(\d+\.\d+)/);
@@ -416,6 +430,7 @@ async function monitorTests() {
       passed: metrics.test.passed,
       failed: metrics.test.failed,
       total: metrics.test.total,
+      duration: result.duration,
     });
     return true;
   } else {
@@ -423,7 +438,11 @@ async function monitorTests() {
       `${MONITOR_CONFIG.colors.red}❌ 测试失败${MONITOR_CONFIG.colors.reset}`
     );
     metrics.test.success = false;
-    logMetric('test', { success: false, error: result.error });
+    logMetric('test', {
+      success: false,
+      error: result.error,
+      duration: result.duration,
+    });
     return false;
   }
 }
