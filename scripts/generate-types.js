@@ -457,27 +457,36 @@ export interface RedisConfig {
   async generateIndexFiles() {
     console.log('📋 生成索引文件...');
 
-    const indexContent = `
-// 自动生成的类型索引文件
+    // 只导出生成的类型，避免与现有类型冲突
+    const modules = [
+      { path: '../api/generated/api', name: 'API 类型' },
+      { path: '../database/generated/database', name: '数据库类型' },
+      { path: '../env/generated/env', name: '环境变量类型' },
+      { path: '../config/generated/config', name: '配置类型' },
+    ];
+
+    const validExports = [];
+
+    for (const module of modules) {
+      const fullPath = path.resolve(
+        'packages/types/src',
+        module.path.replace('../', '')
+      );
+      if (
+        fs.existsSync(`${fullPath}.ts`) ||
+        fs.existsSync(`${fullPath}/index.ts`)
+      ) {
+        validExports.push(`// ${module.name}\nexport * from '${module.path}';`);
+      } else {
+        console.warn(`⚠️  跳过不存在的模块: ${module.path}`);
+      }
+    }
+
+    const indexContent = `// 自动生成的类型索引文件
 // 生成时间: ${new Date().toISOString()}
+// 注意: 此文件由脚本自动生成，请勿手动修改
 
-// API 类型
-export * from './api/generated/api';
-
-// 数据库类型
-export * from './database/generated/database';
-
-// 环境变量类型
-export * from './env/generated/env';
-
-// 配置类型
-export * from './config/generated/config';
-
-// 通用类型
-export * from './common';
-
-// 共享类型
-export * from './shared';
+${validExports.join('\n\n')}
 `;
 
     await this.writeFile('packages/types/src/generated/index.ts', indexContent);
