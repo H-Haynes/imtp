@@ -3,7 +3,7 @@ layout: home
 hero:
   name: IMTP
   text: 现代化开发平台
-  tagline: 基于 TypeScript 的 Monorepo 项目，集成了最先进的开发工具和最佳实践
+  tagline: 基于 TypeScript 的 Monorepo 项目
   actions:
     - theme: brand
       text: 快速开始
@@ -14,7 +14,7 @@ hero:
 features:
   - icon: 🚀
     title: 现代化架构
-    details: 采用 Monorepo 架构，使用 pnpm workspace 管理多个包，提供统一的开发体验
+    details: 采用 Monorepo 架构，使用 pnpm workspace 管理多个包
   - icon: 🎯
     title: TypeScript 优先
     details: 完整的 TypeScript 支持，提供类型安全和优秀的开发体验
@@ -71,7 +71,7 @@ features:
           <span class="stat-number">100%</span>
           <span class="stat-label">TypeScript</span>
         </div>
-        <div class="stat-item">
+            <div class="stat-item">
           <span class="stat-number">99.9%</span>
           <span class="stat-label">覆盖率</span>
         </div>
@@ -188,7 +188,6 @@ features:
       </div>
     </div>
   </div>
-
   <!-- 快速开始 -->
   <div class="quick-start-section">
     <div class="container">
@@ -225,72 +224,6 @@ features:
             <div class="code-line"><span class="keyword">pnpm</span> <span class="command">dev</span></div>
             <div class="code-line"><span class="keyword">pnpm</span> <span class="command">docs:dev</span></div>
             <div class="code-line"><span class="keyword">pnpm</span> <span class="command">test</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- 包展示 -->
-  <div class="packages-section">
-    <div class="container">
-      <h2 class="section-title">
-        <span class="title-gradient">功能包</span>
-      </h2>
-      <p class="section-subtitle">模块化设计，按需使用</p>
-      <div class="packages-grid">
-        <div class="package-card" data-aos="fade-up" data-aos-delay="100">
-          <div class="package-icon">🔧</div>
-          <h3 class="package-title">@imtp/core</h3>
-          <p class="package-description">核心功能包，提供基础工具和常量</p>
-          <div class="package-tags">
-            <span class="tag">核心</span>
-            <span class="tag">工具</span>
-          </div>
-        </div>
-        <div class="package-card" data-aos="fade-up" data-aos-delay="200">
-          <div class="package-icon">📝</div>
-          <h3 class="package-title">@imtp/types</h3>
-          <p class="package-description">共享类型定义包，提供完整的 TypeScript 类型</p>
-          <div class="package-tags">
-            <span class="tag">类型</span>
-            <span class="tag">共享</span>
-          </div>
-        </div>
-        <div class="package-card" data-aos="fade-up" data-aos-delay="300">
-          <div class="package-icon">🎨</div>
-          <h3 class="package-title">@imtp/ui</h3>
-          <p class="package-description">Vue 3 UI 组件库，现代化设计系统</p>
-          <div class="package-tags">
-            <span class="tag">UI</span>
-            <span class="tag">Vue3</span>
-          </div>
-        </div>
-        <div class="package-card" data-aos="fade-up" data-aos-delay="400">
-          <div class="package-icon">📊</div>
-          <h3 class="package-title">@imtp/data</h3>
-          <p class="package-description">数据处理和验证包，提供数据转换和验证功能</p>
-          <div class="package-tags">
-            <span class="tag">数据</span>
-            <span class="tag">验证</span>
-          </div>
-        </div>
-        <div class="package-card" data-aos="fade-up" data-aos-delay="500">
-          <div class="package-icon">🛠️</div>
-          <h3 class="package-title">@imtp/utils</h3>
-          <p class="package-description">通用工具函数包，提供常用工具方法</p>
-          <div class="package-tags">
-            <span class="tag">工具</span>
-            <span class="tag">通用</span>
-          </div>
-        </div>
-        <div class="package-card" data-aos="fade-up" data-aos-delay="600">
-          <div class="package-icon">📚</div>
-          <h3 class="package-title">@imtp/example</h3>
-          <p class="package-description">示例包，展示最佳实践和使用方法</p>
-          <div class="package-tags">
-            <span class="tag">示例</span>
-            <span class="tag">最佳实践</span>
           </div>
         </div>
       </div>
@@ -541,7 +474,8 @@ features:
   border: 1px solid rgba(255, 255, 255, 0.2);
   transition: all 0.3s ease;
   min-width: 120px;
-  flex: 1;
+  flex:1;
+
 }
 
 .stat-item:hover {
@@ -561,13 +495,33 @@ features:
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  color: #667eea;
-  padding: 10px 0;
+  color: #667eea; /* 后备颜色，如果background-clip不支持就显示这个 */
+  padding:10px 0;
+}
+
+/* 为不支持background-clip的浏览器提供后备方案 */
+@supports not (-webkit-background-clip: text) {
+  .stat-number {
+    color: #667eea;
+    background: none;
+    animation: colorFallback 4s ease-in-out infinite;
+  }
 }
 
 @keyframes gradientMove {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes colorFallback {
+  0%, 100% { color: #667eea; }
+  25% { color: #764ba2; }
+  50% { color: #f093fb; }
+  75% { color: #4ecdc4; }
 }
 
 .stat-label {
@@ -823,67 +777,6 @@ features:
   color: #4ecdc4;
 }
 
-/* 包展示区域 */
-.packages-section {
-  padding: 120px 0;
-  background: white;
-}
-
-.packages-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 32px;
-}
-
-.package-card {
-  padding: 32px;
-  text-align: center;
-  border-radius: 16px;
-  background: white;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s ease;
-  border: 1px solid rgba(0, 0, 0, 0.05);
-}
-
-.package-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-}
-
-.package-icon {
-  font-size: 3rem;
-  margin-bottom: 16px;
-}
-
-.package-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: #1a202c;
-}
-
-.package-description {
-  color: #4a5568;
-  line-height: 1.6;
-  margin-bottom: 16px;
-}
-
-.package-tags {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.tag {
-  background: #667eea;
-  color: white;
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
 /* 社区统计区域 */
 .community-section {
   padding: 120px 0;
@@ -917,19 +810,19 @@ features:
   color: #4ecdc4;
 }
 
-.community-section .stat-number {
-  font-size: 3.5rem;
-  font-weight: 900;
-  margin-bottom: 8px;
-  background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+ .community-section .stat-number {
+   font-size: 3.5rem;
+   font-weight: 900;
+   margin-bottom: 8px;
+   background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+   -webkit-background-clip: text;
+   -webkit-text-fill-color: transparent;
+ }
 
-.community-section .stat-label {
-  font-size: 1.125rem;
-  color: rgba(255, 255, 255, 0.8);
-}
+ .community-section .stat-label {
+   font-size: 1.125rem;
+   color: rgba(255, 255, 255, 0.8);
+ }
 
 /* CTA 区域 */
 .cta-section {
@@ -988,10 +881,6 @@ features:
   }
 
   .quick-start-content {
-    grid-template-columns: 1fr;
-  }
-
-  .packages-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1065,7 +954,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }, observerOptions);
 
   // 观察所有需要动画的元素
-  document.querySelectorAll('.feature-card, .code-block, .stat-card, .package-card').forEach(el => {
+  document.querySelectorAll('.feature-card, .code-block, .stat-card').forEach(el => {
     el.style.opacity = '0';
     el.style.transform = 'translateY(30px)';
     el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';

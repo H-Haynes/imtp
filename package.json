@@ -94,6 +94,9 @@
     "typedoc-plugin-markdown": "^4.8.0",
     "typescript": "^5.9.2",
     "unocss": "^66.4.2",
+    "unplugin-auto-import": "^20.0.0",
+    "unplugin-vue-components": "^29.0.0",
+    "unplugin-vue-define-options": "3.0.0-beta.21",
     "vite": "^7.1.1",
     "vitepress": "^1.6.4",
     "vitest": "^3.2.4"
