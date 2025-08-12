@@ -62,6 +62,7 @@ const packageJson = {
     test: 'vitest',
     'test:ui': 'vitest --ui',
     'test:coverage': 'vitest --coverage',
+    'type-check': 'tsc --noEmit',
     lint: 'eslint src --ext .ts,.tsx',
     'lint:fix': 'eslint src --ext .ts,.tsx --fix',
     clean: 'rimraf dist',
@@ -102,37 +103,6 @@ fs.writeFileSync(
   JSON.stringify(tsconfig, null, 2)
 );
 console.log(`创建文件: ${packageDir}/tsconfig.json`);
-
-// 创建rollup.config.js
-const rollupConfig = `import resolve from '@rollup/plugin-node-resolve';
-import typescript from '@rollup/plugin-typescript';
-import { readFileSync } from 'fs';
-
-const packageJson = JSON.parse(readFileSync('./package.json', 'utf8'));
-
-export default {
-  input: 'src/index.ts',
-  output: [
-    {
-      file: packageJson.module,
-      format: 'esm',
-      sourcemap: true,
-    },
-  ],
-  plugins: [
-    resolve(),
-    typescript({
-      tsconfig: './tsconfig.json',
-      declaration: true,
-      declarationDir: './dist',
-      outDir: './dist'
-    }),
-  ],
-  external: [...Object.keys(packageJson.peerDependencies || {})],
-};`;
-
-fs.writeFileSync(path.join(packageDir, 'rollup.config.js'), rollupConfig);
-console.log(`创建文件: ${packageDir}/rollup.config.js`);
 
 // 创建src/index.ts
 const indexTs = `// ${packageName} 包的主入口文件
@@ -204,6 +174,29 @@ export default createVitestConfig();`;
 
 fs.writeFileSync(path.join(packageDir, 'vitest.config.ts'), vitestConfig);
 console.log(`创建文件: ${packageDir}/vitest.config.ts`);
+
+// 创建测试文件
+const testFile = `import { describe, it, expect } from 'vitest';
+import { hello } from '../src/index';
+
+describe('${packageName}', () => {
+  it('should export hello function', () => {
+    expect(typeof hello).toBe('function');
+  });
+
+  it('should return correct greeting message', () => {
+    const result = hello('World');
+    expect(result).toBe('Hello from ${packageName}, World!');
+  });
+
+  it('should work with different names', () => {
+    const result = hello('Test');
+    expect(result).toBe('Hello from ${packageName}, Test!');
+  });
+});`;
+
+fs.writeFileSync(path.join(packageDir, 'tests', 'index.test.ts'), testFile);
+console.log(`创建文件: ${packageDir}/tests/index.test.ts`);
 
 // 创建vite.config.ts
 const viteConfig = `import { createViteLibConfig } from '../../configs/vite.lib.config';

@@ -173,6 +173,12 @@ const MENU_CONFIG = {
         key: '4',
         name: '📦 创建新包',
         command: 'node scripts/create-package.js',
+        needsInput: true,
+        inputPrompt:
+          '请输入包名 (只能包含小写字母、数字和连字符，且必须以字母开头): ',
+        inputValidation: input => /^[a-z][a-z0-9-]*$/.test(input),
+        inputErrorMessage:
+          '包名格式不正确！只能包含小写字母、数字和连字符，且必须以字母开头。',
       },
       { key: '5', name: '🧹 清理构建', command: 'pnpm clean:all' },
       { key: '6', name: '🏗️  构建项目', command: 'pnpm build' },
@@ -388,7 +394,32 @@ class InteractiveScripts {
     // 执行命令
     if (selectedOption.command) {
       this.addToHistory(selectedOption.command);
-      await this.executeCommand(selectedOption.command, selectedOption.name);
+
+      // 检查是否需要用户输入
+      if (selectedOption.needsInput) {
+        let userInput = '';
+        let isValid = false;
+
+        while (!isValid) {
+          userInput = await this.question(selectedOption.inputPrompt);
+
+          if (selectedOption.inputValidation) {
+            isValid = selectedOption.inputValidation(userInput);
+            if (!isValid) {
+              console.log(`❌ ${selectedOption.inputErrorMessage}`);
+            }
+          } else {
+            isValid = true;
+          }
+        }
+
+        // 将用户输入添加到命令中
+        const commandWithInput = `${selectedOption.command} ${userInput}`;
+        await this.executeCommand(commandWithInput, selectedOption.name);
+      } else {
+        await this.executeCommand(selectedOption.command, selectedOption.name);
+      }
+
       await this.question('\n按回车键继续...');
       await this.showMenu(menuKey, parentMenu);
     }

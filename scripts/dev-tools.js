@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execSync, spawn } from 'child_process';
-import { readFileSync, existsSync, writeFileSync } from 'fs';
+import fs from 'fs';
 import { resolve, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -223,7 +223,7 @@ async function analyze() {
   const packages = ['example-package', 'test-package', 'utils'];
   packages.forEach(pkg => {
     const distPath = resolve(`packages/${pkg}/dist`);
-    if (existsSync(distPath)) {
+    if (fs.existsSync(distPath)) {
       try {
         const result = execSync(`du -sh ${distPath}`, { encoding: 'utf8' });
         console.log(`  ${pkg}: ${result.trim()}`);
@@ -365,15 +365,18 @@ function lint() {
 function typeCheck() {
   console.log('🔍 开始类型检查...\n');
 
-  const packages = [
-    'packages/core',
-    'packages/data',
-    'packages/types',
-    'packages/ui',
-    'packages/utils',
-    'packages/example-package',
-    'packages/test-package',
-  ];
+  // 动态获取所有包目录
+  const packagesDir = resolve(process.cwd(), 'packages');
+  const packages = fs
+    .readdirSync(packagesDir, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => `packages/${dirent.name}`)
+    .filter(pkg => {
+      // 检查包是否有 package.json 和 tsconfig.json
+      const packageJsonPath = resolve(process.cwd(), pkg, 'package.json');
+      const tsconfigPath = resolve(process.cwd(), pkg, 'tsconfig.json');
+      return fs.existsSync(packageJsonPath) && fs.existsSync(tsconfigPath);
+    });
 
   let totalErrors = 0;
   let failedPackages = [];
