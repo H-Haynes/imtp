@@ -129,3 +129,6 @@ monitor-logs.json
 monitor-logs.json
 monitor-logs.json
 dependency-report.json
+docs/auto-imports.d.ts
+.eslintrc-auto-import.json
+docs/auto-imports.d.ts
