@@ -67,6 +67,14 @@ node scripts/ci-cd.js release
 node scripts/ci-cd.js analyze
 ```
 
+| 提交类型         | 版本更新              | 示例         |
+| ---------------- | --------------------- | ------------ |
+| feat:            | minor (0.0.1 → 0.1.0) | 新功能       |
+| fix:             | patch (0.0.1 → 0.0.2) | 修复bug      |
+| docs:            | patch (0.0.1 → 0.0.2) | 文档更新     |
+| BREAKING CHANGE: | major (0.0.1 → 1.0.0) | 破坏性变更   |
+| feat!:           | major (0.0.1 → 1.0.0) | 破坏性新功能 |
+
 ### 🎯 单包发布指南
 
 本项目支持灵活的单包发布，适用于 Monorepo 架构中的精确版本控制。
