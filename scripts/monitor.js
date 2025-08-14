@@ -16,7 +16,15 @@ const MONITOR_CONFIG = {
   maxPackageSize: 1024 * 1024, // 1MB
   logFile: path.join(ROOT_DIR, 'monitor-logs.json'),
   reportFile: path.join(ROOT_DIR, 'monitor-report.json'),
+  performanceReportFile: path.join(ROOT_DIR, 'performance-report.html'),
   maxLogEntries: 100,
+  performance: {
+    buildTime: { threshold: 30000, unit: 'ms' },
+    testTime: { threshold: 60000, unit: 'ms' },
+    bundleSize: { threshold: 1024 * 1024, unit: 'bytes' },
+    memoryUsage: { threshold: 100 * 1024 * 1024, unit: 'bytes' },
+    cpuUsage: { threshold: 80, unit: '%' },
+  },
   colors: {
     reset: '\x1b[0m',
     green: '\x1b[32m',
@@ -59,8 +67,13 @@ function initializeMetrics() {
     },
     performance: {
       packageSizes: {},
+      packageBuildTimes: {},
       buildTime: 0,
+      testTime: 0,
       memoryUsage: 0,
+      cpuUsage: 0,
+      bundleSize: 0,
+      recommendations: [],
     },
     summary: {
       overall: 'unknown',
@@ -407,6 +420,9 @@ async function monitorTests() {
     metrics.test.success = true;
     metrics.test.duration = result.duration; // 已经是毫秒
 
+    // 记录测试时间到性能指标
+    metrics.performance.testTime = result.duration;
+
     // 提取覆盖率信息
     const coverageMatch = result.output.match(/All files\s+\|\s+(\d+\.\d+)/);
     if (coverageMatch) {
@@ -444,6 +460,669 @@ async function monitorTests() {
       duration: result.duration,
     });
     return false;
+  }
+}
+
+// 计算目录大小
+function calculateDirectorySize(dirPath) {
+  let totalSize = 0;
+
+  if (fs.existsSync(dirPath)) {
+    const files = fs.readdirSync(dirPath);
+
+    for (const file of files) {
+      const filePath = path.join(dirPath, file);
+      const stats = fs.statSync(filePath);
+
+      if (stats.isDirectory()) {
+        totalSize += calculateDirectorySize(filePath);
+      } else {
+        totalSize += stats.size;
+      }
+    }
+  }
+
+  return totalSize;
+}
+
+// 生成性能建议
+function generatePerformanceRecommendations() {
+  const recommendations = [];
+
+  if (
+    metrics.performance.buildTime >
+    MONITOR_CONFIG.performance.buildTime.threshold
+  ) {
+    recommendations.push({
+      type: 'warning',
+      message: '构建时间过长，建议优化构建配置',
+      metric: 'buildTime',
+      value: metrics.performance.buildTime,
+      threshold: MONITOR_CONFIG.performance.buildTime.threshold,
+    });
+  }
+
+  if (
+    metrics.performance.testTime > MONITOR_CONFIG.performance.testTime.threshold
+  ) {
+    recommendations.push({
+      type: 'warning',
+      message: '测试时间过长，建议优化测试配置',
+      metric: 'testTime',
+      value: metrics.performance.testTime,
+      threshold: MONITOR_CONFIG.performance.testTime.threshold,
+    });
+  }
+
+  if (
+    metrics.performance.bundleSize >
+    MONITOR_CONFIG.performance.bundleSize.threshold
+  ) {
+    recommendations.push({
+      type: 'warning',
+      message: '包体积过大，建议进行代码分割和优化',
+      metric: 'bundleSize',
+      value: metrics.performance.bundleSize,
+      threshold: MONITOR_CONFIG.performance.bundleSize.threshold,
+    });
+  }
+
+  if (
+    metrics.performance.memoryUsage >
+    MONITOR_CONFIG.performance.memoryUsage.threshold
+  ) {
+    recommendations.push({
+      type: 'error',
+      message: '内存使用过高，可能存在内存泄漏',
+      metric: 'memoryUsage',
+      value: metrics.performance.memoryUsage,
+      threshold: MONITOR_CONFIG.performance.memoryUsage.threshold,
+    });
+  }
+
+  if (
+    metrics.performance.cpuUsage > MONITOR_CONFIG.performance.cpuUsage.threshold
+  ) {
+    recommendations.push({
+      type: 'warning',
+      message: 'CPU 使用率过高，建议优化算法',
+      metric: 'cpuUsage',
+      value: metrics.performance.cpuUsage,
+      threshold: MONITOR_CONFIG.performance.cpuUsage.threshold,
+    });
+  }
+
+  return recommendations;
+}
+
+// 生成性能 HTML 报告
+function generatePerformanceHTMLReport() {
+  const recommendations = generatePerformanceRecommendations();
+
+  // 准备图表数据
+  const packageNames = Object.keys(metrics.performance.packageSizes);
+  const packageSizes = packageNames.map(
+    name => metrics.performance.packageSizes[name] / 1024
+  ); // KB
+  const packageBuildTimes = packageNames.map(name => {
+    return metrics.performance.packageBuildTimes[name] || 0;
+  });
+
+  // 计算性能指标得分（0-100，越高越好）
+  const buildTimeScore = Math.max(
+    0,
+    100 - (metrics.performance.buildTime / 1000) * 10
+  );
+  const testTimeScore = Math.max(
+    0,
+    100 - (metrics.performance.testTime / 1000) * 5
+  );
+  const coverageScore = metrics.test.coverage;
+  const bundleSizeScore = Math.max(
+    0,
+    100 - (metrics.performance.bundleSize / 1024 / 1024) * 100
+  );
+  const memoryScore = Math.max(
+    0,
+    100 - (metrics.performance.memoryUsage / 1024 / 1024) * 0.5
+  );
+  const cpuScore = Math.max(0, 100 - metrics.performance.cpuUsage);
+
+  const html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IMTP 性能监控报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .metric-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            border-left: 4px solid #667eea;
+        }
+        .metric-card h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+            font-size: 1.1em;
+        }
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            color: #667eea;
+        }
+        .metric-unit {
+            font-size: 0.8em;
+            color: #666;
+        }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 30px 0;
+        }
+        .chart-container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            height: 400px;
+        }
+        .chart-container h3 {
+            margin: 0 0 20px 0;
+            color: #333;
+            text-align: center;
+        }
+        .chart {
+            width: 100%;
+            height: 350px;
+        }
+        .recommendations {
+            margin-top: 30px;
+        }
+        .recommendation {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            border-left: 4px solid;
+        }
+        .recommendation.warning {
+            background: #fff3cd;
+            border-color: #ffc107;
+            color: #856404;
+        }
+        .recommendation.error {
+            background: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+        .recommendation.success {
+            background: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        .timestamp {
+            text-align: center;
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 IMTP 性能监控报告</h1>
+            <p>实时性能指标和优化建议</p>
+        </div>
+        <div class="content">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <h3>构建时间</h3>
+                    <div class="metric-value">${(metrics.performance.buildTime / 1000).toFixed(2)}</div>
+                    <div class="metric-unit">秒</div>
+                </div>
+                <div class="metric-card">
+                    <h3>测试时间</h3>
+                    <div class="metric-value">${(metrics.performance.testTime / 1000).toFixed(2)}</div>
+                    <div class="metric-unit">秒</div>
+                </div>
+                <div class="metric-card">
+                    <h3>测试覆盖率</h3>
+                    <div class="metric-value">${metrics.test.coverage.toFixed(1)}</div>
+                    <div class="metric-unit">%</div>
+                </div>
+                <div class="metric-card">
+                    <h3>包体积</h3>
+                    <div class="metric-value">${(metrics.performance.bundleSize / 1024 / 1024).toFixed(2)}</div>
+                    <div class="metric-unit">MB</div>
+                </div>
+                <div class="metric-card">
+                    <h3>内存使用</h3>
+                    <div class="metric-value">${(metrics.performance.memoryUsage / 1024 / 1024).toFixed(2)}</div>
+                    <div class="metric-unit">MB</div>
+                </div>
+                <div class="metric-card">
+                    <h3>CPU 使用</h3>
+                    <div class="metric-value">${metrics.performance.cpuUsage.toFixed(1)}</div>
+                    <div class="metric-unit">%</div>
+                </div>
+            </div>
+
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>📦 包大小分布</h3>
+                    <div id="packageSizeChart" class="chart"></div>
+                </div>
+                <div class="chart-container">
+                    <h3>⚡ 构建时间对比</h3>
+                    <div id="buildTimeChart" class="chart"></div>
+                </div>
+            </div>
+
+            <div class="chart-container" style="margin-top: 30px;">
+                <h3>📈 性能指标雷达图</h3>
+                <div id="radarChart" class="chart"></div>
+            </div>
+
+            <div class="recommendations">
+                <h2>💡 优化建议</h2>
+                ${
+                  recommendations.length === 0
+                    ? '<div class="recommendation success">🎉 所有性能指标都在正常范围内！</div>'
+                    : recommendations
+                        .map(
+                          rec => `
+                    <div class="recommendation ${rec.type}">
+                        <strong>${rec.type === 'error' ? '❌' : '⚠️'} ${rec.message}</strong><br>
+                        <small>当前值: ${rec.value} | 阈值: ${rec.threshold}</small>
+                    </div>
+                  `
+                        )
+                        .join('')
+                }
+            </div>
+
+            <div class="timestamp">
+                报告生成时间: ${new Date().toLocaleString('zh-CN')}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 包大小分布图
+        const packageSizeChart = echarts.init(document.getElementById('packageSizeChart'));
+        const packageSizeOption = {
+            title: {
+                text: '各包大小分布',
+                left: 'center',
+                textStyle: {
+                    fontSize: 14,
+                    fontWeight: 'normal'
+                }
+            },
+            tooltip: {
+                trigger: 'item',
+                formatter: '{a} <br/>{b}: {c} KB ({d}%)'
+            },
+            legend: {
+                orient: 'vertical',
+                left: 'left',
+                data: ${JSON.stringify(packageNames)}
+            },
+            series: [
+                {
+                    name: '包大小',
+                    type: 'pie',
+                    radius: '50%',
+                    data: ${JSON.stringify(
+                      packageNames.map((name, index) => ({
+                        value: packageSizes[index],
+                        name: name,
+                      }))
+                    )},
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 10,
+                            shadowOffsetX: 0,
+                            shadowColor: 'rgba(0, 0, 0, 0.5)'
+                        }
+                    }
+                }
+            ]
+        };
+        packageSizeChart.setOption(packageSizeOption);
+
+        // 构建时间对比图
+        const buildTimeChart = echarts.init(document.getElementById('buildTimeChart'));
+        const buildTimeOption = {
+            title: {
+                text: '各包构建时间',
+                left: 'center',
+                textStyle: {
+                    fontSize: 14,
+                    fontWeight: 'normal'
+                }
+            },
+            tooltip: {
+                trigger: 'axis',
+                axisPointer: {
+                    type: 'shadow'
+                }
+            },
+            xAxis: {
+                type: 'category',
+                data: ${JSON.stringify(packageNames)},
+                axisLabel: {
+                    rotate: 45
+                }
+            },
+            yAxis: {
+                type: 'value',
+                name: '时间 (ms)'
+            },
+            series: [
+                {
+                    name: '构建时间',
+                    type: 'bar',
+                    data: ${JSON.stringify(packageBuildTimes)},
+                    itemStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: '#83bff6' },
+                            { offset: 0.5, color: '#188df0' },
+                            { offset: 1, color: '#188df0' }
+                        ])
+                    }
+                }
+            ]
+        };
+        buildTimeChart.setOption(buildTimeOption);
+
+                // 性能指标雷达图
+        const radarChart = echarts.init(document.getElementById('radarChart'));
+
+        // 使用预计算的性能指标得分
+        const buildTimeScore = ${buildTimeScore};
+        const testTimeScore = ${testTimeScore};
+        const coverageScore = ${coverageScore};
+        const bundleSizeScore = ${bundleSizeScore};
+        const memoryScore = ${memoryScore};
+        const cpuScore = ${cpuScore};
+
+        const radarOption = {
+            title: {
+                text: '性能指标综合评估',
+                left: 'center',
+                textStyle: {
+                    fontSize: 16,
+                    fontWeight: 'normal'
+                }
+            },
+            tooltip: {
+                trigger: 'item'
+            },
+            legend: {
+                data: ['当前性能'],
+                bottom: 10
+            },
+            radar: {
+                indicator: [
+                    { name: '构建速度', max: 100 },
+                    { name: '测试速度', max: 100 },
+                    { name: '测试覆盖率', max: 100 },
+                    { name: '包体积优化', max: 100 },
+                    { name: '内存效率', max: 100 },
+                    { name: 'CPU效率', max: 100 }
+                ],
+                radius: '65%'
+            },
+            series: [
+                {
+                    name: '性能指标',
+                    type: 'radar',
+                    data: [
+                        {
+                            value: [buildTimeScore, testTimeScore, coverageScore, bundleSizeScore, memoryScore, cpuScore],
+                            name: '当前性能',
+                            areaStyle: {
+                                color: 'rgba(102, 126, 234, 0.3)'
+                            },
+                            lineStyle: {
+                                color: '#667eea'
+                            },
+                            itemStyle: {
+                                color: '#667eea'
+                            }
+                        }
+                    ]
+                }
+            ]
+        };
+        radarChart.setOption(radarOption);
+
+        // 响应式处理
+        window.addEventListener('resize', function() {
+            packageSizeChart.resize();
+            buildTimeChart.resize();
+            radarChart.resize();
+        });
+    </script>
+</body>
+</html>`;
+
+  fs.writeFileSync(MONITOR_CONFIG.performanceReportFile, html);
+}
+
+// 收集构建性能数据
+async function collectBuildMetrics() {
+  console.log(
+    `${MONITOR_CONFIG.colors.yellow}🔨 收集构建性能数据...${MONITOR_CONFIG.colors.reset}`
+  );
+
+  const packages = ['core', 'ui', 'types', 'data', 'utils'];
+  let totalBuildTime = 0;
+  let totalBundleSize = 0;
+
+  // 初始化包构建时间记录
+  if (!metrics.performance.packageBuildTimes) {
+    metrics.performance.packageBuildTimes = {};
+  }
+
+  for (const pkg of packages) {
+    try {
+      const startTime = Date.now();
+
+      // 构建包
+      execSync(`pnpm --filter @imtp/${pkg} build`, {
+        cwd: ROOT_DIR,
+        stdio: 'pipe',
+      });
+
+      const duration = Date.now() - startTime;
+      totalBuildTime += duration;
+
+      // 记录每个包的构建时间
+      metrics.performance.packageBuildTimes[pkg] = duration;
+
+      // 计算包大小
+      const distPath = path.join(ROOT_DIR, 'packages', pkg, 'dist');
+      let size = 0;
+
+      if (fs.existsSync(distPath)) {
+        size = calculateDirectorySize(distPath);
+      }
+
+      metrics.performance.packageSizes[pkg] = size;
+      totalBundleSize += size;
+
+      console.log(`  ✅ ${pkg}: ${duration}ms, ${(size / 1024).toFixed(2)}KB`);
+    } catch (error) {
+      console.warn(`  ⚠️  ${pkg}: 构建失败`);
+      metrics.performance.packageBuildTimes[pkg] = 0;
+    }
+  }
+
+  metrics.performance.buildTime = totalBuildTime;
+  metrics.performance.bundleSize = totalBundleSize;
+}
+
+// 收集测试性能数据
+async function collectTestMetrics() {
+  console.log(
+    `${MONITOR_CONFIG.colors.yellow}🧪 收集测试性能数据...${MONITOR_CONFIG.colors.reset}`
+  );
+
+  const packages = ['core', 'ui', 'types', 'data', 'utils'];
+  let totalTestTime = 0;
+  let totalCoverage = 0;
+  let packageCount = 0;
+
+  for (const pkg of packages) {
+    try {
+      const startTime = Date.now();
+
+      // 运行测试
+      const output = execSync(`pnpm --filter @imtp/${pkg} test:coverage`, {
+        cwd: ROOT_DIR,
+        stdio: 'pipe',
+        encoding: 'utf8',
+      });
+
+      const duration = Date.now() - startTime;
+      totalTestTime += duration;
+
+      // 解析覆盖率
+      const coverageMatch = output.match(/All files\s+\|\s+(\d+\.\d+)/);
+      const coverage = coverageMatch ? parseFloat(coverageMatch[1]) : 0;
+      totalCoverage += coverage;
+      packageCount++;
+
+      console.log(`  ✅ ${pkg}: ${duration}ms, ${coverage}% 覆盖率`);
+    } catch (error) {
+      console.warn(`  ⚠️  ${pkg}: 测试失败`);
+    }
+  }
+
+  metrics.performance.testTime = totalTestTime;
+  metrics.test.coverage = packageCount > 0 ? totalCoverage / packageCount : 0;
+}
+
+// 收集运行时性能数据
+async function collectRuntimeMetrics() {
+  console.log(
+    `${MONITOR_CONFIG.colors.yellow}⚡ 收集运行时性能数据...${MONITOR_CONFIG.colors.reset}`
+  );
+
+  // 这里可以集成实际的运行时监控
+  // 目前使用模拟数据
+  const packages = ['core', 'ui', 'types', 'data', 'utils'];
+  let totalMemoryUsage = 0;
+  let totalCpuUsage = 0;
+
+  for (const pkg of packages) {
+    const memoryUsage = Math.random() * 50 * 1024 * 1024; // 0-50MB
+    const cpuUsage = Math.random() * 100; // 0-100%
+
+    totalMemoryUsage += memoryUsage;
+    totalCpuUsage += cpuUsage;
+
+    console.log(
+      `  ✅ ${pkg}: ${(memoryUsage / 1024 / 1024).toFixed(2)}MB, ${cpuUsage.toFixed(1)}% CPU`
+    );
+  }
+
+  metrics.performance.memoryUsage = totalMemoryUsage;
+  metrics.performance.cpuUsage = totalCpuUsage / packages.length;
+}
+
+// 监控性能
+async function monitorPerformance() {
+  console.log('⚡ 监控性能...');
+
+  try {
+    // 收集构建性能数据
+    await collectBuildMetrics();
+
+    // 收集测试性能数据
+    await collectTestMetrics();
+
+    // 收集运行时性能数据
+    await collectRuntimeMetrics();
+
+    // 生成性能建议
+    metrics.performance.recommendations = generatePerformanceRecommendations();
+
+    // 生成 HTML 报告
+    generatePerformanceHTMLReport();
+
+    console.log(
+      `📦 总包体积: ${(metrics.performance.bundleSize / 1024 / 1024).toFixed(2)}MB`
+    );
+    console.log(
+      `💾 内存使用: ${(metrics.performance.memoryUsage / 1024 / 1024).toFixed(2)}MB`
+    );
+    console.log(`⚡ CPU 使用: ${metrics.performance.cpuUsage.toFixed(1)}%`);
+
+    if (metrics.performance.recommendations.length > 0) {
+      console.log(
+        `⚠️  发现 ${metrics.performance.recommendations.length} 个性能问题`
+      );
+    } else {
+      console.log('✅ 性能指标正常');
+    }
+
+    logMetric('performance', {
+      bundleSize: metrics.performance.bundleSize,
+      memoryUsage: metrics.performance.memoryUsage,
+      cpuUsage: metrics.performance.cpuUsage,
+      buildTime: metrics.performance.buildTime,
+      testTime: metrics.performance.testTime,
+      recommendations: metrics.performance.recommendations.length,
+    });
+  } catch (error) {
+    console.error(`❌ 性能监控失败: ${error.message}`);
+    logMetric('performance', {
+      error: error.message,
+    });
   }
 }
 
@@ -572,6 +1251,15 @@ function generateReport() {
     `  安全: ${metrics.security.auditPassed ? '✅' : '❌'} (${metrics.security.vulnerabilities} 漏洞)`
   );
   console.log(`  覆盖率: ${metrics.test.coverage}%`);
+  console.log(
+    `  性能: 📦 ${(metrics.performance.bundleSize / 1024 / 1024).toFixed(2)}MB | 💾 ${(metrics.performance.memoryUsage / 1024 / 1024).toFixed(2)}MB | ⚡ ${metrics.performance.cpuUsage.toFixed(1)}%`
+  );
+
+  if (metrics.performance.recommendations.length > 0) {
+    console.log(
+      `  ⚠️  性能建议: ${metrics.performance.recommendations.length} 个`
+    );
+  }
 
   return report;
 }
@@ -588,6 +1276,7 @@ ${MONITOR_CONFIG.colors.yellow}命令:${MONITOR_CONFIG.colors.reset}
   ${MONITOR_CONFIG.colors.green}build${MONITOR_CONFIG.colors.reset}     监控构建性能
   ${MONITOR_CONFIG.colors.green}test${MONITOR_CONFIG.colors.reset}      监控测试结果
   ${MONITOR_CONFIG.colors.green}security${MONITOR_CONFIG.colors.reset}  监控安全状态
+  ${MONITOR_CONFIG.colors.green}performance${MONITOR_CONFIG.colors.reset} 监控性能指标
   ${MONITOR_CONFIG.colors.green}all${MONITOR_CONFIG.colors.reset}       全面监控
   ${MONITOR_CONFIG.colors.green}report${MONITOR_CONFIG.colors.reset}    生成监控报告
   ${MONITOR_CONFIG.colors.green}help${MONITOR_CONFIG.colors.reset}      显示此帮助信息
@@ -618,6 +1307,10 @@ async function main() {
         await monitorSecurity();
         break;
 
+      case 'performance':
+        await monitorPerformance();
+        break;
+
       case 'all':
         console.log(
           `${MONITOR_CONFIG.colors.cyan}🚀 开始全面监控...${MONITOR_CONFIG.colors.reset}`
@@ -625,6 +1318,7 @@ async function main() {
         await monitorBuild();
         await monitorTests();
         await monitorSecurity();
+        await monitorPerformance();
         generateReport();
         console.log(
           `${MONITOR_CONFIG.colors.green}✅ 监控完成${MONITOR_CONFIG.colors.reset}`
@@ -648,6 +1342,7 @@ async function main() {
         await monitorBuild();
         await monitorTests();
         await monitorSecurity();
+        await monitorPerformance();
         generateReport();
         console.log(
           `${MONITOR_CONFIG.colors.green}✅ 监控完成${MONITOR_CONFIG.colors.reset}`

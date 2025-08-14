@@ -143,9 +143,14 @@ const MENU_CONFIG = {
         name: '🔒 安全监控',
         command: 'node scripts/monitor.js security',
       },
-      { key: '4', name: '📈 全面监控', command: 'node scripts/monitor.js all' },
       {
-        key: '5',
+        key: '4',
+        name: '⚡ 性能监控',
+        command: 'node scripts/monitor.js performance',
+      },
+      { key: '5', name: '📈 全面监控', command: 'node scripts/monitor.js all' },
+      {
+        key: '6',
         name: '📋 生成报告',
         command: 'node scripts/monitor.js report',
       },
