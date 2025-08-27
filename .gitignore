@@ -132,3 +132,5 @@ dependency-report.json
 docs/auto-imports.d.ts
 .eslintrc-auto-import.json
 docs/auto-imports.d.ts
+performance-report.html
+performance-logs.json
